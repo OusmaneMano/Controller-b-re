@@ -1,0 +1,21 @@
+target/
+.classpath
+.project
+.settings/
+.vscode/
+*.jar
+*.war
+*.ear
+*.iml
+.idea/
+out/
+*.log
+.DS_Store
+
+# Secrets / local overrides — never commit these
+.env
+.env.*
+application-local.properties
+application-secrets.properties
+*.pem
+*.key
