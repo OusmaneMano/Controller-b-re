@@ -60,20 +60,20 @@ public class Subscription {
     @Column(columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean earlyBirdUsed;
 
-    @Column(columnDefinition = "DOUBLE DEFAULT 0.0")
+    @Column(columnDefinition = "DOUBLE PRECISION DEFAULT 0.0")
     private Double earlyBirdDiscount;
 
     @Column(columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean annualPlanActive;
 
-    @Column(columnDefinition = "DOUBLE DEFAULT 0.0")
+    @Column(columnDefinition = "DOUBLE PRECISION DEFAULT 0.0")
     private Double annualPlanPrice;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referred_by_id")
     private Company referredBy;
 
-    @Column(columnDefinition = "DOUBLE DEFAULT 0.0")
+    @Column(columnDefinition = "DOUBLE PRECISION DEFAULT 0.0")
     private Double referralCredits;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
