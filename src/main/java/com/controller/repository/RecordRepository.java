@@ -15,5 +15,7 @@ public interface RecordRepository extends JpaRepository<Record, Long> {
     List<Record> findByCompanyIdAndCreatedById(Long companyId, Long userId);
     Page<Record> findByCompanyIdAndCreatedById(Long companyId, Long userId, Pageable pageable);
     List<Record> findByCompanyIdAndCreatedAtBetween(Long companyId, LocalDateTime start, LocalDateTime end);
+    List<Record> findByCompanyIdAndCreatedByIdAndCreatedAtBetween(
+            Long companyId, Long userId, LocalDateTime start, LocalDateTime end);
     Long countByCompanyId(Long companyId);
 }

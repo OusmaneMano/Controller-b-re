@@ -1,5 +1,6 @@
 package com.controller.entity;
 
+import com.controller.entity.enums.FieldRole;
 import com.controller.entity.enums.FieldType;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
@@ -32,6 +33,14 @@ public class TableColumn {
     @Column(nullable = false)
     private FieldType fieldType;
 
+    /**
+     * NONE for ordinary columns. QUANTITY / UNIT_PRICE / AMOUNT identify the
+     * special Quantity-Unit Price-Amount columns set up during company setup.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, columnDefinition = "VARCHAR(20) DEFAULT 'NONE'")
+    private FieldRole fieldRole;
+
     @Column(columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean isRequired;
 
@@ -61,6 +70,7 @@ public class TableColumn {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (isRequired == null) isRequired = false;
+        if (fieldRole == null) fieldRole = FieldRole.NONE;
     }
 
     @PreUpdate

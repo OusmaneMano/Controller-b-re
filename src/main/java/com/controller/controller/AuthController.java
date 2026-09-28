@@ -65,17 +65,16 @@ public class AuthController {
     }
 
     /**
-     * Employee credential verification endpoint
+     * Employee credential verification endpoint (links the employee's own
+     * account to a company using the manager-issued shared username/password)
      * POST /api/auth/employee/verify-credentials
-     * Query param: companyId
      * Body: EmployeeCredentialsRequest
      */
     @PostMapping("/employee/verify-credentials")
     public ResponseEntity<AuthDTO.AuthResponse> verifyEmployeeCredentials(
-            @RequestParam Long companyId,
             @RequestBody AuthDTO.EmployeeCredentialsRequest request) {
-        log.info("Verifying employee credentials for company: {}", companyId);
-        AuthDTO.AuthResponse response = authService.verifyEmployeeCredentials(companyId, request);
+        log.info("Verifying employee credentials for: {}", request.getEmployeeEmail());
+        AuthDTO.AuthResponse response = authService.verifyEmployeeCredentials(request);
         return ResponseEntity.ok(response);
     }
 

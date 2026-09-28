@@ -1,9 +1,11 @@
 package com.controller.service;
 
 import com.controller.dto.AuthDTO;
+import com.controller.entity.Company;
 import com.controller.entity.User;
 import com.controller.entity.enums.UserRole;
 import com.controller.entity.enums.UserStatus;
+import com.controller.repository.CompanyRepository;
 import com.controller.repository.UserRepository;
 import com.controller.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ import java.time.LocalDateTime;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -194,12 +197,14 @@ public class AuthService {
     }
 
     /**
-     * Employee credential verification using company ID and credentials
+     * Employee enters the manager-provided username + password (shared per company,
+     * 4+ digit numeric password). If they match a company, the employee's own account
+     * gets linked to that company for the first time (or re-linked, if the manager
+     * changed the credentials later).
      */
-    public AuthDTO.AuthResponse verifyEmployeeCredentials(Long companyId, AuthDTO.EmployeeCredentialsRequest request) {
-        log.info("Employee credential verification for company {}: {}", companyId, request.getEmployeeEmail());
+    public AuthDTO.AuthResponse verifyEmployeeCredentials(AuthDTO.EmployeeCredentialsRequest request) {
+        log.info("Employee credential verification: {}", request.getEmployeeEmail());
 
-        // Verify employee exists
         User employee = userRepository.findByEmail(request.getEmployeeEmail())
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
 
@@ -207,15 +212,18 @@ public class AuthService {
             throw new IllegalArgumentException("User is not an employee");
         }
 
-        // In Phase 2, properly verify manager credentials and company association
-        // For MVP, we'll just create a token for the employee
-        
-        String token = jwtTokenProvider.generateToken(
-                request.getEmployeeEmail(),
-                UserRole.EMPLOYEE.toString()
-        );
+        Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
-        log.info("Employee credentials verified: {}", request.getEmployeeEmail());
+        if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
+
+        employee.setCompany(company);
+        userRepository.save(employee);
+
+        String token = jwtTokenProvider.generateEmployeeToken(employee.getEmail(), company.getId());
+        log.info("Employee {} linked to company {}", employee.getEmail(), company.getId());
 
         return AuthDTO.AuthResponse.builder()
                 .token(token)
@@ -226,7 +234,12 @@ public class AuthService {
                         .lastName(employee.getLastName())
                         .role(employee.getRole().toString())
                         .build())
-                .message("Employee credentials verified")
+                .company(AuthDTO.CompanyInfo.builder()
+                        .id(company.getId())
+                        .name(company.getName())
+                        .status(company.getStatus().toString())
+                        .build())
+                .message("You're now connected to " + company.getName())
                 .build();
     }
 
