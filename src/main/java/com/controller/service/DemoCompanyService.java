@@ -73,7 +73,7 @@ public class DemoCompanyService {
                 .employeeUsername("demo_shop")
                 .employeePassword("1234")
                 .tableDesign("PROFESSIONAL")
-                .status(CompanyStatus.DEMO)
+                .status(CompanyStatus.ACTIVE)
                 .demo(true)
                 .build());
 

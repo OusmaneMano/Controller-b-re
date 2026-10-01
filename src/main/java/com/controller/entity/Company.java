@@ -59,7 +59,7 @@ public class Company {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (demo == null) demo = false;
-        if (status == null) status = Boolean.TRUE.equals(demo) ? CompanyStatus.DEMO : CompanyStatus.ACTIVE;
+        if (status == null) status = CompanyStatus.ACTIVE;
         if (tableDesign == null || tableDesign.isBlank()) tableDesign = "PROFESSIONAL";
     }
 
