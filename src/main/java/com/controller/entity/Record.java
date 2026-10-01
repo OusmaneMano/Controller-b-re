@@ -4,6 +4,7 @@ import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Type;
+
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -35,6 +36,12 @@ public class Record {
     @Column(columnDefinition = "VARCHAR(50) DEFAULT 'ACTIVE'")
     private String status;
 
+    @Column(name = "client_key")
+    private String clientKey;
+
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
+    private Boolean deleted;
+
     @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -45,7 +52,8 @@ public class Record {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        status = "ACTIVE";
+        if (status == null) status = "ACTIVE";
+        if (deleted == null) deleted = false;
     }
 
     @PreUpdate
@@ -55,17 +63,16 @@ public class Record {
 
     @Transient
     public Boolean isEditable() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime editDeadline = createdAt.plusHours(24);
-        return now.isBefore(editDeadline);
+        if (createdAt == null) return true;
+        return LocalDateTime.now().isBefore(createdAt.plusHours(24));
     }
 
     @Transient
     public Long getHoursRemaining() {
-        LocalDateTime now = LocalDateTime.now();
+        if (createdAt == null) return 24L;
         LocalDateTime editDeadline = createdAt.plusHours(24);
-        if (now.isBefore(editDeadline)) {
-            return java.time.temporal.ChronoUnit.HOURS.between(now, editDeadline);
+        if (LocalDateTime.now().isBefore(editDeadline)) {
+            return java.time.temporal.ChronoUnit.HOURS.between(LocalDateTime.now(), editDeadline);
         }
         return 0L;
     }

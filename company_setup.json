@@ -1,0 +1,1 @@
+{ "companyName": "Test Retail Co", "industry": "Retail", "amountColumnsOption": "QUANTITY_UNIT_PRICE_AMOUNT", "customColumns": [ { "fieldName": "Product", "fieldType": "TEXT", "isRequired": true } ], "tableDesign": "PROFESSIONAL", "employeeUsername": "testco_emp", "employeePassword": "1234" }

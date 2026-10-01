@@ -48,19 +48,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
-                        // NOTE: server.servlet.context-path=/api already strips the "/api"
-                        // prefix before Spring Security matches the path, so patterns here
-                        // must NOT repeat "/api".
                         .requestMatchers("/health", "/health/status").permitAll()
                         .requestMatchers("/auth/**").permitAll()
-
-                        // Protected endpoints
-                        .requestMatchers("/manager/**").hasRole("MANAGER")
-                        .requestMatchers("/employee/**").hasRole("EMPLOYEE")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
-
-                        // Anything else needs authentication
+                        .requestMatchers("/manager/**", "/employee/**", "/me/**", "/records/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -71,14 +62,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Driven by cors.allowed-origins (env var CORS_ALLOWED_ORIGINS on Render),
-        // comma-separated, e.g. "http://localhost:3000,https://your-flutter-app.com"
         configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Collections.singletonList("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
-
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

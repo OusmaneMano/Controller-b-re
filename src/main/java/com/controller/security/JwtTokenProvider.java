@@ -14,10 +14,10 @@ import java.util.Date;
 @Slf4j
 public class JwtTokenProvider {
 
-    @Value("${jwt.secret:GenerateAStrongSecretKeyWithAtLeast256BitsForProduction}")
+    @Value("${app.jwt.secret:${jwt.secret:GenerateAStrongSecretKeyWithAtLeast256BitsForProduction}}")
     private String jwtSecret;
 
-    @Value("${jwt.expiration:86400000}")
+    @Value("${app.jwt.expiration:${jwt.expiration:86400000}}")
     private long jwtExpirationMs;
 
     private SecretKey getSigningKey() {

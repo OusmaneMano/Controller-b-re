@@ -26,27 +26,152 @@ public class AuthService {
     private final CompanyRepository companyRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final MembershipService membershipService;
+    private final DemoCompanyService demoCompanyService;
 
-    // ==================== MANAGER AUTHENTICATION ====================
-
-    /**
-     * Manager signup using generic SignupRequest
-     */
     public AuthDTO.AuthResponse managerSignup(AuthDTO.SignupRequest request) {
-        log.info("Manager signup attempt: {}", request.getEmail());
+        validateNewUser(request);
+        User user = persistUser(request, UserRole.MANAGER, UserStatus.EXPLORING);
+        Company demo = demoCompanyService.getOrCreateDemoCompany();
+        membershipService.add(user, demo, UserRole.EMPLOYEE);
+        user.setLastCompanyId(demo.getId());
+        user.setCompany(demo);
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.MANAGER.toString());
+        return buildAuth(token, user, demo, UserRole.EMPLOYEE.toString(),
+                "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
+    }
 
-        // Validate email not already registered
+    public AuthDTO.AuthResponse managerLogin(AuthDTO.LoginRequest request) {
+        User user = loadByEmail(request.getEmail());
+        if (user.getRole() == UserRole.EMPLOYEE) {
+            throw new IllegalArgumentException("Not a manager account — use employee login, or join a company.");
+        }
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new IllegalArgumentException("Use the admin login endpoint");
+        }
+        checkPassword(request.getPassword(), user);
+        if (user.getUserStatus() == UserStatus.SUSPENDED || user.getUserStatus() == UserStatus.DELETED) {
+            throw new IllegalArgumentException("Account not active");
+        }
+        user.setLastLogin(LocalDateTime.now());
+        demoCompanyService.ensureDemoMembership(user);
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.MANAGER.toString());
+        Company current = currentCompany(user);
+        String role = currentRole(user, current);
+        return buildAuth(token, user, current, role, null);
+    }
+
+    public AuthDTO.AuthResponse employeeSignup(AuthDTO.SignupRequest request) {
+        validateNewUser(request);
+        User user = persistUser(request, UserRole.EMPLOYEE, UserStatus.ACTIVE);
+        return AuthDTO.AuthResponse.builder()
+                .user(toUserInfo(user))
+                .memberships(membershipService.listFor(user))
+                .message("Employee account created. Log in, then join a company with the shared username and PIN.")
+                .build();
+    }
+
+    public AuthDTO.AuthResponse employeeLogin(AuthDTO.LoginRequest request) {
+        User user = loadByEmail(request.getEmail());
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new IllegalArgumentException("Use the admin login endpoint");
+        }
+        checkPassword(request.getPassword(), user);
+        if (user.getUserStatus() == UserStatus.SUSPENDED || user.getUserStatus() == UserStatus.DELETED) {
+            throw new IllegalArgumentException("Account not active");
+        }
+        user.setLastLogin(LocalDateTime.now());
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        Company current = currentCompany(user);
+        String role = currentRole(user, current);
+        return buildAuth(token, user, current, role, null);
+    }
+
+    public AuthDTO.AuthResponse verifyEmployeeCredentials(AuthDTO.EmployeeCredentialsRequest request) {
+        User user = loadByEmail(request.getEmployeeEmail());
+        Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+        if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
+        membershipService.add(user, company, UserRole.EMPLOYEE);
+        user.setLastCompanyId(company.getId());
+        user.setCompany(company);
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
+                "You're now connected to " + company.getName() + ". Switch companies anytime.");
+    }
+
+    public AuthDTO.AuthResponse requestPayment(String email, AuthDTO.PaymentRequest request) {
+        User user = loadByEmail(email);
+        if (user.getUserStatus() == UserStatus.ACTIVE) {
+            return buildAuth(null, user, currentCompany(user), currentRole(user, currentCompany(user)),
+                    "Already approved — you can set up your company.");
+        }
+        user.setPaymentNote(request != null ? request.getNote() : null);
+        user.setPaymentRequestedAt(LocalDateTime.now());
+        user.setUserStatus(UserStatus.PAYMENT_SENT);
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        return buildAuth(token, user, currentCompany(user), currentRole(user, currentCompany(user)),
+                "Payment marked as sent. Keep exploring the demo while you wait for approval.");
+    }
+
+    public AuthDTO.AuthResponse switchCompany(String email, Long companyId) {
+        var m = membershipService.require(email, companyId);
+        User user = m.getUser();
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        return buildAuth(token, user, m.getCompany(), m.getRole().toString(),
+                "Switched to " + m.getCompany().getName());
+    }
+
+    public AuthDTO.AuthResponse me(String email) {
+        User user = loadByEmail(email);
+        Company current = currentCompany(user);
+        return buildAuth(null, user, current, currentRole(user, current), null);
+    }
+
+    public AuthDTO.AuthResponse googleLogin(AuthDTO.GoogleLoginRequest request) {
+        throw new UnsupportedOperationException("Google OAuth login not yet implemented");
+    }
+
+    public AuthDTO.AuthResponse adminLogin(AuthDTO.LoginRequest request) {
+        if ("admin@controller.com".equals(request.getEmail()) && "admin123".equals(request.getPassword())) {
+            String token = jwtTokenProvider.generateToken(request.getEmail(), UserRole.ADMIN.toString());
+            return AuthDTO.AuthResponse.builder()
+                    .token(token)
+                    .user(AuthDTO.UserInfo.builder()
+                            .id(1L)
+                            .email(request.getEmail())
+                            .role(UserRole.ADMIN.toString())
+                            .status(UserStatus.ACTIVE.toString())
+                            .build())
+                    .build();
+        }
+        throw new IllegalArgumentException("Invalid admin credentials");
+    }
+
+    public AuthDTO.AuthResponse refreshToken(AuthDTO.RefreshTokenRequest request) {
+        throw new UnsupportedOperationException("Token refresh not yet implemented");
+    }
+
+    private void validateNewUser(AuthDTO.SignupRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Email is required");
+        }
         if (userRepository.existsByEmail(request.getEmail())) {
-            log.warn("Email already registered: {}", request.getEmail());
             throw new IllegalArgumentException("Email already registered");
         }
-
-        // Validate passwords match
-        if (!request.getPassword().equals(request.getConfirmPassword())) {
+        if (request.getPassword() == null || !request.getPassword().equals(request.getConfirmPassword())) {
             throw new IllegalArgumentException("Passwords do not match");
         }
+    }
 
-        // Create user
+    private User persistUser(AuthDTO.SignupRequest request, UserRole role, UserStatus status) {
         User user = User.builder()
                 .email(request.getEmail())
                 .firstName(request.getFirstName())
@@ -54,258 +179,71 @@ public class AuthService {
                 .phone(request.getPhone())
                 .country(request.getCountry())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .role(UserRole.MANAGER)
-                .userStatus(UserStatus.PENDING_APPROVAL)
+                .role(role)
+                .userStatus(status)
                 .termsAccepted(request.getAcceptedTerms() != null && request.getAcceptedTerms())
                 .termsAcceptedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
                 .build();
-
-        User savedUser = userRepository.save(user);
-        log.info("Manager account created: {}", savedUser.getId());
-
-        return AuthDTO.AuthResponse.builder()
-                .token(null) // Token generation deferred until approval
-                .user(AuthDTO.UserInfo.builder()
-                        .id(savedUser.getId())
-                        .email(savedUser.getEmail())
-                        .firstName(savedUser.getFirstName())
-                        .lastName(savedUser.getLastName())
-                        .role(savedUser.getRole().toString())
-                        .build())
-                .message("Manager account created. Awaiting payment approval.")
-                .build();
+        return userRepository.save(user);
     }
 
-    /**
-     * Manager login using generic LoginRequest
-     */
-    public AuthDTO.AuthResponse managerLogin(AuthDTO.LoginRequest request) {
-        log.info("Manager login attempt: {}", request.getEmail());
-
-        User user = userRepository.findByEmail(request.getEmail())
+    private User loadByEmail(String email) {
+        return userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+    }
 
-        if (user.getRole() != UserRole.MANAGER) {
-            throw new IllegalArgumentException("Not a manager account");
-        }
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+    private void checkPassword(String raw, User user) {
+        if (!passwordEncoder.matches(raw, user.getPassword())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
+    }
 
-        if (user.getUserStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account not active. Awaiting approval.");
+    private Company currentCompany(User user) {
+        if (user.getLastCompanyId() != null) {
+            return companyRepository.findById(user.getLastCompanyId()).orElse(user.getCompany());
         }
+        return user.getCompany();
+    }
 
-        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
-        log.info("Manager logged in successfully: {}", user.getEmail());
+    private String currentRole(User user, Company company) {
+        if (company == null) return user.getRole().toString();
+        return membershipService.listFor(user).stream()
+                .filter(m -> company.getId().equals(m.getCompanyId()))
+                .map(AuthDTO.MembershipInfo::getRole)
+                .findFirst()
+                .orElse(user.getRole().toString());
+    }
 
-        return AuthDTO.AuthResponse.builder()
-                .token(token)
-                .user(AuthDTO.UserInfo.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .firstName(user.getFirstName())
-                        .lastName(user.getLastName())
-                        .role(user.getRole().toString())
-                        .build())
+    private AuthDTO.UserInfo toUserInfo(User user) {
+        return AuthDTO.UserInfo.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .role(user.getRole().toString())
+                .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
+                .paymentNote(user.getPaymentNote())
                 .build();
     }
 
-    // ==================== EMPLOYEE AUTHENTICATION ====================
-
-    /**
-     * Employee signup using generic SignupRequest
-     */
-    public AuthDTO.AuthResponse employeeSignup(AuthDTO.SignupRequest request) {
-        log.info("Employee signup attempt: {}", request.getEmail());
-
-        // Validate email not already registered
-        if (userRepository.existsByEmail(request.getEmail())) {
-            log.warn("Email already registered: {}", request.getEmail());
-            throw new IllegalArgumentException("Email already registered");
-        }
-
-        // Validate passwords match
-        if (!request.getPassword().equals(request.getConfirmPassword())) {
-            throw new IllegalArgumentException("Passwords do not match");
-        }
-
-        // Create employee
-        User employee = User.builder()
-                .email(request.getEmail())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(UserRole.EMPLOYEE)
-                .userStatus(UserStatus.ACTIVE)
-                .termsAccepted(request.getAcceptedTerms() != null && request.getAcceptedTerms())
-                .termsAcceptedAt(LocalDateTime.now())
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        User savedEmployee = userRepository.save(employee);
-        log.info("Employee account created: {}", savedEmployee.getId());
-
-        return AuthDTO.AuthResponse.builder()
-                .user(AuthDTO.UserInfo.builder()
-                        .id(savedEmployee.getId())
-                        .email(savedEmployee.getEmail())
-                        .firstName(savedEmployee.getFirstName())
-                        .lastName(savedEmployee.getLastName())
-                        .role(savedEmployee.getRole().toString())
-                        .build())
-                .message("Employee account created successfully")
-                .build();
-    }
-
-    /**
-     * Employee login using generic LoginRequest
-     */
-    public AuthDTO.AuthResponse employeeLogin(AuthDTO.LoginRequest request) {
-        log.info("Employee login attempt: {}", request.getEmail());
-
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-
-        if (user.getRole() != UserRole.EMPLOYEE) {
-            throw new IllegalArgumentException("Not an employee account");
-        }
-
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
-
-        if (user.getUserStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account not active");
-        }
-
-        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
-        log.info("Employee logged in successfully: {}", user.getEmail());
-
-        return AuthDTO.AuthResponse.builder()
-                .token(token)
-                .user(AuthDTO.UserInfo.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .firstName(user.getFirstName())
-                        .lastName(user.getLastName())
-                        .role(user.getRole().toString())
-                        .build())
-                .build();
-    }
-
-    /**
-     * Employee enters the manager-provided username + password (shared per company,
-     * 4+ digit numeric password). If they match a company, the employee's own account
-     * gets linked to that company for the first time (or re-linked, if the manager
-     * changed the credentials later).
-     */
-    public AuthDTO.AuthResponse verifyEmployeeCredentials(AuthDTO.EmployeeCredentialsRequest request) {
-        log.info("Employee credential verification: {}", request.getEmployeeEmail());
-
-        User employee = userRepository.findByEmail(request.getEmployeeEmail())
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
-
-        if (employee.getRole() != UserRole.EMPLOYEE) {
-            throw new IllegalArgumentException("User is not an employee");
-        }
-
-        Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-
-        if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
-
-        employee.setCompany(company);
-        userRepository.save(employee);
-
-        String token = jwtTokenProvider.generateEmployeeToken(employee.getEmail(), company.getId());
-        log.info("Employee {} linked to company {}", employee.getEmail(), company.getId());
-
-        return AuthDTO.AuthResponse.builder()
-                .token(token)
-                .user(AuthDTO.UserInfo.builder()
-                        .id(employee.getId())
-                        .email(employee.getEmail())
-                        .firstName(employee.getFirstName())
-                        .lastName(employee.getLastName())
-                        .role(employee.getRole().toString())
-                        .build())
-                .company(AuthDTO.CompanyInfo.builder()
-                        .id(company.getId())
-                        .name(company.getName())
-                        .status(company.getStatus().toString())
-                        .build())
-                .message("You're now connected to " + company.getName())
-                .build();
-    }
-
-    // ==================== GOOGLE AUTHENTICATION ====================
-
-    /**
-     * Google OAuth login
-     */
-    public AuthDTO.AuthResponse googleLogin(AuthDTO.GoogleLoginRequest request) {
-        log.info("Google login attempt with ID token");
-
-        // TODO: Implement Google OAuth verification
-        // 1. Verify the ID token with Google's API
-        // 2. Extract user email from token
-        // 3. Find or create user in database
-        // 4. Generate JWT token
-        
-        throw new UnsupportedOperationException("Google OAuth login not yet implemented");
-    }
-
-    // ==================== ADMIN AUTHENTICATION ====================
-
-    /**
-     * Admin login using generic LoginRequest
-     */
-    public AuthDTO.AuthResponse adminLogin(AuthDTO.LoginRequest request) {
-        log.info("Admin login attempt: {}", request.getEmail());
-
-        // For MVP, simple hardcoded admin check
-        if ("admin@controller.com".equals(request.getEmail()) && 
-            "admin123".equals(request.getPassword())) {
-            
-            String token = jwtTokenProvider.generateToken(
-                    request.getEmail(),
-                    UserRole.ADMIN.toString()
-            );
-            
-            log.info("Admin logged in: {}", request.getEmail());
-            
-            return AuthDTO.AuthResponse.builder()
-                    .token(token)
-                    .user(AuthDTO.UserInfo.builder()
-                            .id(1L)
-                            .email(request.getEmail())
-                            .role(UserRole.ADMIN.toString())
-                            .build())
+    private AuthDTO.AuthResponse buildAuth(String token, User user, Company company, String roleInCompany, String message) {
+        AuthDTO.CompanyInfo info = null;
+        if (company != null) {
+            info = AuthDTO.CompanyInfo.builder()
+                    .id(company.getId())
+                    .name(company.getName())
+                    .status(company.getStatus() != null ? company.getStatus().toString() : null)
+                    .demo(Boolean.TRUE.equals(company.getDemo()))
+                    .roleInCompany(roleInCompany)
                     .build();
         }
-
-        throw new IllegalArgumentException("Invalid admin credentials");
-    }
-
-    // ==================== TOKEN REFRESH ====================
-
-    /**
-     * Refresh authentication token
-     */
-    public AuthDTO.AuthResponse refreshToken(AuthDTO.RefreshTokenRequest request) {
-        log.info("Refresh token request");
-        
-        // TODO: Implement token refresh logic
-        // 1. Validate refresh token
-        // 2. Extract user from refresh token
-        // 3. Generate new access token
-        // 4. Return new token
-        
-        throw new UnsupportedOperationException("Token refresh not yet implemented");
+        return AuthDTO.AuthResponse.builder()
+                .token(token)
+                .user(toUserInfo(user))
+                .company(info)
+                .memberships(membershipService.listFor(user))
+                .message(message)
+                .build();
     }
 }

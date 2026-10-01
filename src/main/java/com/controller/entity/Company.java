@@ -3,6 +3,7 @@ package com.controller.entity;
 import com.controller.entity.enums.CompanyStatus;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -41,8 +42,11 @@ public class Company {
     private String tableDesign;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "VARCHAR(50) DEFAULT 'PENDING'")
+    @Column(nullable = false, columnDefinition = "VARCHAR(50) DEFAULT 'ACTIVE'")
     private CompanyStatus status;
+
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
+    private Boolean demo;
 
     @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
@@ -54,8 +58,9 @@ public class Company {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        status = CompanyStatus.PENDING;
-        tableDesign = "PROFESSIONAL";
+        if (demo == null) demo = false;
+        if (status == null) status = Boolean.TRUE.equals(demo) ? CompanyStatus.DEMO : CompanyStatus.ACTIVE;
+        if (tableDesign == null || tableDesign.isBlank()) tableDesign = "PROFESSIONAL";
     }
 
     @PreUpdate

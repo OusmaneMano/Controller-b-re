@@ -69,6 +69,14 @@ public class User {
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "last_company_id")
+    private Long lastCompanyId;
+
+    @Column(length = 500)
+    private String paymentNote;
+
+    private LocalDateTime paymentRequestedAt;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

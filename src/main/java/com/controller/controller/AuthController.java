@@ -117,6 +117,34 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Logged-in manager marks "I have paid" (WhatsApp / email). Admin still has to approve.
+     * POST /api/auth/request-payment
+     */
+    @PostMapping("/request-payment")
+    public ResponseEntity<AuthDTO.AuthResponse> requestPayment(
+            java.security.Principal principal,
+            @RequestBody(required = false) AuthDTO.PaymentRequest request) {
+        if (principal == null) {
+            throw new IllegalArgumentException("Login first, then mark payment sent");
+        }
+        return ResponseEntity.ok(authService.requestPayment(principal.getName(), request));
+    }
+
+    /** POST /api/auth/switch-company  body: { "companyId": 2 } */
+    @PostMapping("/switch-company")
+    public ResponseEntity<AuthDTO.AuthResponse> switchCompany(
+            java.security.Principal principal,
+            @RequestBody AuthDTO.SwitchCompanyRequest request) {
+        return ResponseEntity.ok(authService.switchCompany(principal.getName(), request.getCompanyId()));
+    }
+
+    /** GET /api/auth/me */
+    @GetMapping("/me")
+    public ResponseEntity<AuthDTO.AuthResponse> me(java.security.Principal principal) {
+        return ResponseEntity.ok(authService.me(principal.getName()));
+    }
+
     // ==================== HEALTH ENDPOINT ====================
 
     /**

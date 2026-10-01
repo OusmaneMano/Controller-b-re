@@ -2,8 +2,10 @@ package com.controller.service;
 
 import com.controller.dto.CompanyDTO;
 import com.controller.entity.Company;
+import com.controller.entity.Membership;
 import com.controller.entity.TableColumn;
 import com.controller.entity.User;
+import com.controller.entity.enums.CompanyStatus;
 import com.controller.entity.enums.FieldRole;
 import com.controller.entity.enums.FieldType;
 import com.controller.entity.enums.UserRole;
@@ -30,16 +32,13 @@ public class CompanyService {
     private final CompanyRepository companyRepository;
     private final TableColumnRepository tableColumnRepository;
     private final UserRepository userRepository;
+    private final MembershipService membershipService;
 
-    /**
-     * Full company setup: company info + the Quantity/Unit Price/Amount choice
-     * + custom columns + table design + employee credentials, in one call.
-     */
     public CompanyDTO.CompanyResponse setupCompany(String managerEmail, CompanyDTO.SetupRequest request) {
-        User manager = getManagerOrThrow(managerEmail);
-
-        if (companyRepository.findByManager(manager).isPresent()) {
-            throw new IllegalArgumentException("This manager already has a company set up");
+        User manager = userRepository.findByEmail(managerEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (manager.getUserStatus() != UserStatus.ACTIVE) {
+            throw new IllegalArgumentException("Your payment is not approved yet. Explore the demo, send payment, then wait for approval before creating your own table.");
         }
 
         if (request.getCompanyName() == null || request.getCompanyName().isBlank()) {
@@ -52,6 +51,9 @@ public class CompanyService {
                 || !request.getEmployeePassword().matches("\\d+")) {
             throw new IllegalArgumentException("Employee password must be 4 or more digits");
         }
+        if (companyRepository.findByEmployeeUsername(request.getEmployeeUsername()).isPresent()) {
+            throw new IllegalArgumentException("That employee username is already used by another company");
+        }
 
         Company company = Company.builder()
                 .name(request.getCompanyName())
@@ -62,14 +64,18 @@ public class CompanyService {
                 .employeeUsername(request.getEmployeeUsername())
                 .employeePassword(request.getEmployeePassword())
                 .tableDesign(request.getTableDesign() != null ? request.getTableDesign() : "PROFESSIONAL")
+                .status(CompanyStatus.ACTIVE)
+                .demo(false)
                 .build();
 
         Company savedCompany = companyRepository.save(company);
+        membershipService.add(manager, savedCompany, UserRole.MANAGER);
+        manager.setLastCompanyId(savedCompany.getId());
+        manager.setCompany(savedCompany);
+        userRepository.save(manager);
 
         int orderIndex = 0;
         List<TableColumn> columns = new ArrayList<>();
-
-        // Auto-added Quantity/Unit Price/Amount columns, based on the manager's choice
         CompanyDTO.AmountColumnsOption option = request.getAmountColumnsOption();
         if (option == CompanyDTO.AmountColumnsOption.QUANTITY_UNIT_PRICE_AMOUNT) {
             columns.add(buildSystemColumn(savedCompany, "Quantity", FieldType.NUMBER, FieldRole.QUANTITY, orderIndex++));
@@ -78,14 +84,10 @@ public class CompanyService {
         } else if (option == CompanyDTO.AmountColumnsOption.AMOUNT_ONLY) {
             columns.add(buildSystemColumn(savedCompany, "Amount", FieldType.NUMBER, FieldRole.AMOUNT, orderIndex++));
         }
-        // NONE (or null) -> no auto columns added
 
-        // Manager's own custom columns
         if (request.getCustomColumns() != null) {
             for (CompanyDTO.ColumnInput input : request.getCustomColumns()) {
-                if (input.getFieldName() == null || input.getFieldName().isBlank()) {
-                    continue;
-                }
+                if (input.getFieldName() == null || input.getFieldName().isBlank()) continue;
                 columns.add(TableColumn.builder()
                         .company(savedCompany)
                         .fieldName(input.getFieldName())
@@ -102,42 +104,35 @@ public class CompanyService {
         }
 
         List<TableColumn> savedColumns = tableColumnRepository.saveAll(columns);
-        log.info("Company '{}' set up by manager {} with {} columns", savedCompany.getName(), managerEmail, savedColumns.size());
-
-        return toCompanyResponse(savedCompany, savedColumns, "Company set up successfully");
+        return toCompanyResponse(savedCompany, savedColumns, UserRole.MANAGER, "Company set up successfully. Share the employee username and PIN with your staff.");
     }
 
-    public CompanyDTO.CompanyResponse getMyCompany(String managerEmail) {
-        User manager = getManagerOrThrow(managerEmail);
-        Company company = companyRepository.findByManager(manager)
-                .orElseThrow(() -> new ResourceNotFoundException("No company set up yet for this manager"));
-        List<TableColumn> columns = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(company.getId());
-        return toCompanyResponse(company, columns, null);
+    public CompanyDTO.CompanyResponse getMyCompany(String email, Long companyId) {
+        Membership m = membershipService.require(email, companyId);
+        List<TableColumn> columns = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(m.getCompany().getId());
+        return toCompanyResponse(m.getCompany(), columns, m.getRole(), null);
     }
 
-    public List<CompanyDTO.ColumnResponse> getColumnsForEmployee(String employeeEmail) {
-        User employee = userRepository.findByEmail(employeeEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (employee.getCompany() == null) {
-            throw new IllegalArgumentException("You are not linked to a company yet");
-        }
-        return tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(employee.getCompany().getId())
+    public List<CompanyDTO.ColumnResponse> getColumnsForEmployee(String email, Long companyId) {
+        Membership m = membershipService.require(email, companyId);
+        return tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(m.getCompany().getId())
                 .stream().map(this::toColumnResponse).collect(Collectors.toList());
     }
 
-    public CompanyDTO.ColumnResponse addColumn(String managerEmail, CompanyDTO.ColumnInput input) {
-        User manager = getManagerOrThrow(managerEmail);
-        Company company = companyRepository.findByManager(manager)
-                .orElseThrow(() -> new ResourceNotFoundException("No company set up yet for this manager"));
-
+    public CompanyDTO.ColumnResponse addColumn(String email, Long companyId, CompanyDTO.ColumnInput input) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the shop manager can add columns");
+        }
+        if (Boolean.TRUE.equals(m.getCompany().getDemo())) {
+            throw new IllegalArgumentException("The demo shop columns are fixed");
+        }
         if (input.getFieldName() == null || input.getFieldName().isBlank()) {
             throw new IllegalArgumentException("Field name is required");
         }
-
-        int nextIndex = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(company.getId()).size();
-
-        TableColumn column = TableColumn.builder()
-                .company(company)
+        int nextIndex = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(m.getCompany().getId()).size();
+        TableColumn saved = tableColumnRepository.save(TableColumn.builder()
+                .company(m.getCompany())
                 .fieldName(input.getFieldName())
                 .fieldType(input.getFieldType() != null ? input.getFieldType() : FieldType.TEXT)
                 .fieldRole(FieldRole.NONE)
@@ -147,27 +142,28 @@ public class CompanyService {
                 .defaultValue(input.getDefaultValue())
                 .validationRules(input.getValidationRules())
                 .options(input.getOptions())
-                .build();
-
-        TableColumn saved = tableColumnRepository.save(column);
-        log.info("Column '{}' added to company {}", saved.getFieldName(), company.getId());
+                .build());
         return toColumnResponse(saved);
     }
 
-    public void deleteColumn(String managerEmail, Long columnId) {
-        User manager = getManagerOrThrow(managerEmail);
-        Company company = companyRepository.findByManager(manager)
-                .orElseThrow(() -> new ResourceNotFoundException("No company set up yet for this manager"));
-        tableColumnRepository.deleteByCompanyIdAndId(company.getId(), columnId);
-        log.info("Column {} deleted from company {}", columnId, company.getId());
+    public void deleteColumn(String email, Long companyId, Long columnId) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the shop manager can delete columns");
+        }
+        if (Boolean.TRUE.equals(m.getCompany().getDemo())) {
+            throw new IllegalArgumentException("The demo shop columns are fixed");
+        }
+        tableColumnRepository.deleteByCompanyIdAndId(m.getCompany().getId(), columnId);
     }
 
     public CompanyDTO.CompanyResponse updateEmployeeCredentials(
-            String managerEmail, CompanyDTO.UpdateEmployeeCredentialsRequest request) {
-        User manager = getManagerOrThrow(managerEmail);
-        Company company = companyRepository.findByManager(manager)
-                .orElseThrow(() -> new ResourceNotFoundException("No company set up yet for this manager"));
-
+            String email, Long companyId, CompanyDTO.UpdateEmployeeCredentialsRequest request) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the shop manager can change the staff PIN");
+        }
+        Company company = m.getCompany();
         if (request.getEmployeeUsername() != null && !request.getEmployeeUsername().isBlank()) {
             company.setEmployeeUsername(request.getEmployeeUsername());
         }
@@ -177,35 +173,19 @@ public class CompanyService {
             }
             company.setEmployeePassword(request.getEmployeePassword());
         }
-
         Company saved = companyRepository.save(company);
         List<TableColumn> columns = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(saved.getId());
-        log.info("Employee credentials updated for company {}", saved.getId());
-        return toCompanyResponse(saved, columns, "Employee credentials updated");
-    }
-
-    // ==================== HELPERS ====================
-
-    private User getManagerOrThrow(String email) {
-        User manager = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (manager.getRole() != UserRole.MANAGER) {
-            throw new IllegalArgumentException("Only managers can perform this action");
-        }
-        if (manager.getUserStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Account not active. Awaiting payment approval.");
-        }
-        return manager;
+        return toCompanyResponse(saved, columns, UserRole.MANAGER, "Employee credentials updated");
     }
 
     private TableColumn buildSystemColumn(Company company, String fieldName, FieldType fieldType,
-                                           FieldRole fieldRole, int orderIndex) {
+                                          FieldRole fieldRole, int orderIndex) {
         return TableColumn.builder()
                 .company(company)
                 .fieldName(fieldName)
                 .fieldType(fieldType)
                 .fieldRole(fieldRole)
-                .isRequired(fieldRole != FieldRole.AMOUNT) // Amount is either auto-calculated or entered; never "required" to type past validation blocking it
+                .isRequired(fieldRole != FieldRole.AMOUNT)
                 .orderIndex(orderIndex)
                 .build();
     }
@@ -225,7 +205,9 @@ public class CompanyService {
                 .build();
     }
 
-    private CompanyDTO.CompanyResponse toCompanyResponse(Company company, List<TableColumn> columns, String message) {
+    private CompanyDTO.CompanyResponse toCompanyResponse(Company company, List<TableColumn> columns,
+                                                         UserRole role, String message) {
+        boolean managerView = role == UserRole.MANAGER;
         return CompanyDTO.CompanyResponse.builder()
                 .id(company.getId())
                 .name(company.getName())
@@ -234,8 +216,8 @@ public class CompanyService {
                 .description(company.getDescription())
                 .tableDesign(company.getTableDesign())
                 .status(company.getStatus().toString())
-                .employeeUsername(company.getEmployeeUsername())
-                .employeePassword(company.getEmployeePassword())
+                .employeeUsername(managerView ? company.getEmployeeUsername() : null)
+                .employeePassword(managerView ? company.getEmployeePassword() : null)
                 .columns(columns.stream().map(this::toColumnResponse).collect(Collectors.toList()))
                 .message(message)
                 .build();

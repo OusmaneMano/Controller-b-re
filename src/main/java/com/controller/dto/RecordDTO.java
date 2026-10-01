@@ -15,6 +15,7 @@ public class RecordDTO {
     @AllArgsConstructor
     public static class CreateRecordRequest {
         private Map<String, Object> data;
+        private String clientKey;
     }
 
     @Data
@@ -22,6 +23,7 @@ public class RecordDTO {
     @AllArgsConstructor
     public static class UpdateRecordRequest {
         private Map<String, Object> data;
+        private String clientKey;
     }
 
     @Data
@@ -39,6 +41,7 @@ public class RecordDTO {
         private LocalDateTime updatedAt;
         private Boolean editable;
         private Long hoursRemaining;
+        private String clientKey;
     }
 
     /**

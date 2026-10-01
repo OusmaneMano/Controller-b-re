@@ -115,6 +115,20 @@ public class AuthDTO {
         private String refreshToken;
     }
 
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PaymentRequest {
+        private String note;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SwitchCompanyRequest {
+        private Long companyId;
+    }
+
     // ==================== RESPONSES ====================
 
     /**
@@ -129,6 +143,7 @@ public class AuthDTO {
         private String refreshToken;
         private UserInfo user;
         private CompanyInfo company;
+        private java.util.List<MembershipInfo> memberships;
         private String message;
     }
 
@@ -173,6 +188,8 @@ public class AuthDTO {
         private String lastName;
         private String email;
         private String role;
+        private String status;
+        private String paymentNote;
     }
 
     /**
@@ -186,5 +203,21 @@ public class AuthDTO {
         private Long id;
         private String name;
         private String status;
+        private Boolean demo;
+        private String roleInCompany;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class MembershipInfo {
+        private Long companyId;
+        private String companyName;
+        private String industry;
+        private String role;
+        private Boolean demo;
+        private String status;
     }
 }
+
