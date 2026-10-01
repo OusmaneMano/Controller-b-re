@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Order(2)
@@ -23,27 +24,31 @@ public class MembershipBackfill implements CommandLineRunner {
     private final MembershipService membershipService;
 
     @Override
+    @Transactional
     public void run(String... args) {
         int created = 0;
         for (Company company : companyRepository.findAll()) {
             if (Boolean.TRUE.equals(company.getDemo())) continue;
-            User manager = company.getManager();
-            if (manager != null) {
-                membershipService.add(manager, company, UserRole.MANAGER);
-                if (manager.getLastCompanyId() == null) {
-                    manager.setLastCompanyId(company.getId());
-                    userRepository.save(manager);
-                }
-                created++;
+            Long managerId = company.getManager() == null ? null : company.getManager().getId();
+            if (managerId == null) continue;
+            User manager = userRepository.findById(managerId).orElse(null);
+            if (manager == null) continue;
+            membershipService.add(manager, company, UserRole.MANAGER);
+            if (manager.getLastCompanyId() == null) {
+                manager.setLastCompanyId(company.getId());
+                userRepository.save(manager);
             }
+            created++;
         }
         for (User user : userRepository.findAll()) {
-            if (user.getCompany() != null && user.getRole() == UserRole.EMPLOYEE) {
-                membershipService.add(user, user.getCompany(), UserRole.EMPLOYEE);
-                if (user.getLastCompanyId() == null) {
-                    user.setLastCompanyId(user.getCompany().getId());
-                    userRepository.save(user);
-                }
+            if (user.getRole() != UserRole.EMPLOYEE || user.getCompany() == null) continue;
+            Long companyId = user.getCompany().getId();
+            Company company = companyRepository.findById(companyId).orElse(null);
+            if (company == null) continue;
+            membershipService.add(user, company, UserRole.EMPLOYEE);
+            if (user.getLastCompanyId() == null) {
+                user.setLastCompanyId(companyId);
+                userRepository.save(user);
             }
         }
         log.info("Membership backfill touched {} company-owner links", created);
