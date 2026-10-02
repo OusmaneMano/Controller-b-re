@@ -31,7 +31,8 @@ public class AuthService {
 
     public AuthDTO.AuthResponse managerSignup(AuthDTO.SignupRequest request) {
         validateNewUser(request);
-        User user = persistUser(request, UserRole.MANAGER, UserStatus.EXPLORING);
+        boolean owner = request.getEmail() != null && request.getEmail().equalsIgnoreCase("ousmanemanot@gmail.com");
+        User user = persistUser(request, UserRole.MANAGER, owner ? UserStatus.ACTIVE : UserStatus.EXPLORING);
         Company demo = demoCompanyService.getOrCreateDemoCompany();
         membershipService.add(user, demo, UserRole.EMPLOYEE);
         user.setLastCompanyId(demo.getId());
@@ -39,7 +40,8 @@ public class AuthService {
         userRepository.save(user);
         String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.MANAGER.toString());
         return buildAuth(token, user, demo, UserRole.EMPLOYEE.toString(),
-                "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
+                owner ? "Owner account is active. You can set up a shop without payment."
+                      : "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
     }
 
     public AuthDTO.AuthResponse managerLogin(AuthDTO.LoginRequest request) {
