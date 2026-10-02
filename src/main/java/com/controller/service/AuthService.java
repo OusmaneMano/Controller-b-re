@@ -142,7 +142,7 @@ public class AuthService {
     }
 
     public AuthDTO.AuthResponse adminLogin(AuthDTO.LoginRequest request) {
-        if ("admin@controller.com".equals(request.getEmail()) && "admin123".equals(request.getPassword())) {
+        if ("ousmanemanot@gmail.com".equalsIgnoreCase(request.getEmail()) && "Maman78pere@".equals(request.getPassword())) {
             String token = jwtTokenProvider.generateToken(request.getEmail(), UserRole.ADMIN.toString());
             return AuthDTO.AuthResponse.builder()
                     .token(token)
