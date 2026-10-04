@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -37,6 +38,24 @@ public class CompanyController {
             @RequestBody CompanyDTO.AddColumnRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(companyService.addColumn(principal.getName(), companyId, request.getColumn()));
+    }
+
+    @PutMapping("/manager/company/columns/{columnId}")
+    public ResponseEntity<CompanyDTO.ColumnResponse> renameColumn(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @PathVariable Long columnId,
+            @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(companyService.renameColumn(principal.getName(), companyId, columnId, body.get("fieldName")));
+    }
+
+    @PutMapping("/manager/company/columns/order")
+    public ResponseEntity<Void> reorder(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @RequestBody List<Long> columnIds) {
+        companyService.reorderColumns(principal.getName(), companyId, columnIds);
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/manager/company/columns/{columnId}")

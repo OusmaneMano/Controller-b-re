@@ -77,6 +77,8 @@ public class User {
 
     private LocalDateTime paymentRequestedAt;
 
+    private LocalDateTime paidUntil;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

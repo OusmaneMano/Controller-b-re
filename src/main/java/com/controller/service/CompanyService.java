@@ -12,6 +12,7 @@ import com.controller.entity.enums.UserRole;
 import com.controller.entity.enums.UserStatus;
 import com.controller.exception.ResourceNotFoundException;
 import com.controller.repository.CompanyRepository;
+import com.controller.repository.MembershipRepository;
 import com.controller.repository.TableColumnRepository;
 import com.controller.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class CompanyService {
     private final TableColumnRepository tableColumnRepository;
     private final UserRepository userRepository;
     private final MembershipService membershipService;
+    private final MembershipRepository membershipRepository;
 
     public CompanyDTO.CompanyResponse setupCompany(String managerEmail, CompanyDTO.SetupRequest request) {
         User manager = userRepository.findByEmail(managerEmail)
@@ -40,7 +42,11 @@ public class CompanyService {
         if (manager.getUserStatus() != UserStatus.ACTIVE) {
             throw new IllegalArgumentException("Your payment is not approved yet. Explore the demo, send payment, then wait for approval before creating your own table.");
         }
-
+        boolean alreadyOwns = membershipRepository.findByUserId(manager.getId()).stream()
+                .anyMatch(m -> m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo()));
+        if (alreadyOwns) {
+            throw new IllegalArgumentException("This email already has a shop. A second shop needs another payment and approval.");
+        }
         if (request.getCompanyName() == null || request.getCompanyName().isBlank()) {
             throw new IllegalArgumentException("Company name is required");
         }
@@ -155,6 +161,41 @@ public class CompanyService {
             throw new IllegalArgumentException("The demo shop columns are fixed");
         }
         tableColumnRepository.deleteByCompanyIdAndId(m.getCompany().getId(), columnId);
+    }
+
+    public CompanyDTO.ColumnResponse renameColumn(String email, Long companyId, Long columnId, String fieldName) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the shop manager can rename a column");
+        }
+        if (Boolean.TRUE.equals(m.getCompany().getDemo())) {
+            throw new IllegalArgumentException("The demo shop columns are fixed");
+        }
+        TableColumn column = tableColumnRepository.findById(columnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Column not found"));
+        if (!column.getCompany().getId().equals(m.getCompany().getId())) {
+            throw new IllegalArgumentException("Wrong shop");
+        }
+        if (fieldName == null || fieldName.isBlank()) {
+            throw new IllegalArgumentException("Column name is required");
+        }
+        column.setFieldName(fieldName.trim());
+        return toColumnResponse(tableColumnRepository.save(column));
+    }
+
+    public void reorderColumns(String email, Long companyId, List<Long> columnIds) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the shop manager can reorder columns");
+        }
+        int index = 0;
+        for (Long id : columnIds) {
+            TableColumn column = tableColumnRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Column not found"));
+            if (!column.getCompany().getId().equals(m.getCompany().getId())) continue;
+            column.setOrderIndex(index++);
+            tableColumnRepository.save(column);
+        }
     }
 
     public CompanyDTO.CompanyResponse updateEmployeeCredentials(
