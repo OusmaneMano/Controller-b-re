@@ -6,43 +6,53 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/admin")
 @RequiredArgsConstructor
 public class AdminController {
 
     private final AdminService adminService;
 
-    @GetMapping("/managers/pending")
+    @GetMapping("/admin/managers/pending")
     public ResponseEntity<List<AuthDTO.UserInfo>> listPendingManagers() {
         return ResponseEntity.ok(adminService.listPendingManagers());
     }
 
-    @GetMapping("/accounts")
+    @GetMapping("/admin/accounts")
     public ResponseEntity<List<Map<String, Object>>> accounts() {
         return ResponseEntity.ok(adminService.listAccounts());
     }
 
-    @PostMapping("/managers/{userId}/approve")
+    @PostMapping("/admin/managers/{userId}/approve")
     public ResponseEntity<AuthDTO.UserInfo> approveManager(@PathVariable Long userId, @RequestParam(defaultValue = "1") int months) {
         return ResponseEntity.ok(adminService.approveManager(userId, months));
     }
 
-    @PostMapping("/managers/{userId}/extend")
-    public ResponseEntity<AuthDTO.UserInfo> extend(@PathVariable Long userId, @RequestParam(defaultValue = "1") int months) {
-        return ResponseEntity.ok(adminService.extend(userId, months));
+    @PostMapping("/admin/managers/{userId}/increment")
+    public ResponseEntity<AuthDTO.UserInfo> increment(@PathVariable Long userId) {
+        return ResponseEntity.ok(adminService.increment(userId));
     }
 
-    @PostMapping("/users/{userId}/block")
+    @PostMapping("/admin/managers/{userId}/decrement")
+    public ResponseEntity<AuthDTO.UserInfo> decrement(@PathVariable Long userId) {
+        return ResponseEntity.ok(adminService.decrement(userId));
+    }
+
+    @PostMapping("/admin/users/{userId}/block")
     public ResponseEntity<AuthDTO.UserInfo> block(@PathVariable Long userId) {
         return ResponseEntity.ok(adminService.block(userId));
     }
 
-    @PostMapping("/users/{userId}/unblock")
+    @PostMapping("/admin/users/{userId}/unblock")
     public ResponseEntity<AuthDTO.UserInfo> unblock(@PathVariable Long userId) {
         return ResponseEntity.ok(adminService.unblock(userId));
+    }
+
+    @GetMapping({"/manager/payment", "/employee/payment"})
+    public ResponseEntity<Map<String, Object>> myPayment(Principal principal) {
+        return ResponseEntity.ok(adminService.paymentFor(principal.getName()));
     }
 }

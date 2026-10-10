@@ -18,26 +18,20 @@ import java.time.LocalDateTime;
 public class SubscriptionScheduler {
 
     private final UserRepository userRepository;
+    private final AdminService adminService;
 
     @Scheduled(cron = "0 5 0 * * ?")
     @Transactional
     public void blockOverdueManagers() {
         LocalDateTime now = LocalDateTime.now();
-        int blocked = 0;
         for (User user : userRepository.findAll()) {
             if (user.getRole() != UserRole.MANAGER) continue;
             if (user.getUserStatus() == UserStatus.SUSPENDED || user.getUserStatus() == UserStatus.DELETED) continue;
             LocalDateTime until = user.getPaidUntil();
             if (until == null || !until.isAfter(now)) {
-                user.setUserStatus(UserStatus.SUSPENDED);
-                user.setIsActive(false);
-                userRepository.save(user);
-                blocked++;
-                log.info("Blocked overdue manager {} paidUntil={}", user.getEmail(), until);
+                adminService.block(user.getId());
+                log.info("Auto-blocked overdue manager {}", user.getEmail());
             }
-        }
-        if (blocked > 0) {
-            log.info("Subscription check blocked {} overdue managers", blocked);
         }
     }
 }
