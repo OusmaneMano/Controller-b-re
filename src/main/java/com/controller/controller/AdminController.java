@@ -31,6 +31,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.approveManager(userId, months));
     }
 
+    @PostMapping("/managers/{userId}/extend")
+    public ResponseEntity<AuthDTO.UserInfo> extend(@PathVariable Long userId, @RequestParam(defaultValue = "1") int months) {
+        return ResponseEntity.ok(adminService.extend(userId, months));
+    }
+
     @PostMapping("/users/{userId}/block")
     public ResponseEntity<AuthDTO.UserInfo> block(@PathVariable Long userId) {
         return ResponseEntity.ok(adminService.block(userId));

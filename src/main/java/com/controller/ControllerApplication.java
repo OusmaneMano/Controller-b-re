@@ -2,12 +2,10 @@ package com.controller;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
-/**
- * Password encoding and CORS are configured once, in SecurityConfig,
- * to avoid duplicate bean definitions and conflicting CORS setups.
- */
 @SpringBootApplication
+@EnableScheduling
 public class ControllerApplication {
 
     public static void main(String[] args) {
