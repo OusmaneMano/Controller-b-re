@@ -6,6 +6,7 @@ import com.controller.entity.User;
 import com.controller.entity.enums.UserRole;
 import com.controller.entity.enums.UserStatus;
 import com.controller.repository.CompanyRepository;
+import com.controller.repository.MembershipRepository;
 import com.controller.repository.UserRepository;
 import com.controller.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
+    private final MembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final MembershipService membershipService;
@@ -93,27 +95,27 @@ public class AuthService {
     }
 
     public AuthDTO.AuthResponse verifyEmployeeCredentials(AuthDTO.EmployeeCredentialsRequest request) {
-    User user = loadByEmail(request.getEmployeeEmail());
-    Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
-            .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-    if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
-        throw new IllegalArgumentException("Invalid credentials");
+        User user = loadByEmail(request.getEmployeeEmail());
+        Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+        if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
+        int limit = company.getEmployeeLimit() == null ? 3 : company.getEmployeeLimit();
+        long current = membershipRepository.countByCompanyIdAndRole(company.getId(), UserRole.EMPLOYEE);
+        boolean already = membershipRepository.findByUserId(user.getId()).stream()
+                .anyMatch(m -> company.getId().equals(m.getCompany().getId()) && m.getRole() == UserRole.EMPLOYEE);
+        if (!already && current >= limit) {
+            throw new IllegalArgumentException("This shop is full (" + limit + " employees). Ask the manager to upgrade.");
+        }
+        membershipService.add(user, company, UserRole.EMPLOYEE);
+        user.setLastCompanyId(company.getId());
+        user.setCompany(company);
+        userRepository.save(user);
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
+                "You're now connected to " + company.getName() + ".");
     }
-    int limit = company.getEmployeeLimit() == null ? 3 : company.getEmployeeLimit();
-    long current = membershipRepository.countByCompanyIdAndRole(company.getId(), UserRole.EMPLOYEE);
-    boolean already = membershipRepository.findByUserId(user.getId()).stream()
-            .anyMatch(m -> company.getId().equals(m.getCompany().getId()) && m.getRole() == UserRole.EMPLOYEE);
-    if (!already && current >= limit) {
-        throw new IllegalArgumentException("This shop is full (" + limit + " employees). Ask the manager to upgrade.");
-    }
-    membershipService.add(user, company, UserRole.EMPLOYEE);
-    user.setLastCompanyId(company.getId());
-    user.setCompany(company);
-    userRepository.save(user);
-    String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
-    return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
-            "You're now connected to " + company.getName() + ".");
-}
 
     public AuthDTO.AuthResponse requestPayment(String email, AuthDTO.PaymentRequest request) {
         User user = loadByEmail(email);
@@ -225,17 +227,17 @@ public class AuthService {
     }
 
     private AuthDTO.UserInfo toUserInfo(User user) {
-    return AuthDTO.UserInfo.builder()
-            .id(user.getId())
-            .email(user.getEmail())
-            .firstName(user.getFirstName())
-            .lastName(user.getLastName())
-            .role(user.getRole().toString())
-            .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
-            .paymentNote(user.getPaymentNote())
-            .paidUntil(user.getPaidUntil() == null ? null : user.getPaidUntil().toString())
-            .build();
-}
+        return AuthDTO.UserInfo.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .role(user.getRole().toString())
+                .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
+                .paymentNote(user.getPaymentNote())
+                .paidUntil(user.getPaidUntil() == null ? null : user.getPaidUntil().toString())
+                .build();
+    }
 
     private AuthDTO.AuthResponse buildAuth(String token, User user, Company company, String roleInCompany, String message) {
         AuthDTO.CompanyInfo info = null;
