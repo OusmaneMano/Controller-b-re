@@ -84,9 +84,12 @@ public class AdminService {
     }
 
     private int monthsLeft(LocalDateTime until) {
-        if (until == null || !until.isAfter(LocalDateTime.now())) return 0;
-        long days = ChronoUnit.DAYS.between(LocalDate.now(), until.toLocalDate());
-        return (int) Math.max(1, (days + 29) / 30);
+    if (until == null || !until.isAfter(LocalDateTime.now())) return 0;
+    LocalDate end = until.toLocalDate();
+    LocalDate now = LocalDate.now();
+    int months = (end.getYear() - now.getYear()) * 12 + (end.getMonthValue() - now.getMonthValue());
+    if (end.getDayOfMonth() < now.getDayOfMonth()) months--;
+    return Math.max(1, months);
     }
 
     private int feeFor(long employees) {
