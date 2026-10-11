@@ -83,4 +83,12 @@ public class MembershipService {
                 .status(c.getStatus() != null ? c.getStatus().toString() : null)
                 .build();
     }
+
+    public void removeEmployee(String managerEmail, Long companyId, Long employeeUserId) {
+    Membership manager = require(managerEmail, companyId);
+    if (manager.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only the manager can remove staff");
+    membershipRepository.findByUserIdAndCompanyId(employeeUserId, companyId)
+            .filter(m -> m.getRole() == UserRole.EMPLOYEE)
+            .ifPresent(membershipRepository::delete);
+}
 }

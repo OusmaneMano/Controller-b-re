@@ -81,4 +81,12 @@ public class CompanyController {
             @RequestHeader(value = "X-Company-Id", required = false) Long companyId) {
         return ResponseEntity.ok(companyService.getColumnsForEmployee(principal.getName(), companyId));
     }
+
+    @DeleteMapping("/manager/company/employees/{userId}")
+    public ResponseEntity<Void> removeEmployee(Principal principal,
+                                               @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+                                               @PathVariable Long userId) {
+        companyService.removeEmployee(principal.getName(), companyId, userId);
+        return ResponseEntity.noContent().build();
+    }
 }

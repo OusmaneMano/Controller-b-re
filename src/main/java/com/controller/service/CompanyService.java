@@ -219,6 +219,16 @@ public class CompanyService {
         return toCompanyResponse(saved, columns, UserRole.MANAGER, "Employee credentials updated");
     }
 
+    public void removeEmployee(String managerEmail, Long companyId, Long employeeUserId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the manager can remove staff");
+        }
+        membershipRepository.findByUserIdAndCompanyId(employeeUserId, companyId)
+                .filter(m -> m.getRole() == UserRole.EMPLOYEE)
+                .ifPresent(membershipRepository::delete);
+    }
+
     private TableColumn buildSystemColumn(Company company, String fieldName, FieldType fieldType,
                                           FieldRole fieldRole, int orderIndex) {
         return TableColumn.builder()
