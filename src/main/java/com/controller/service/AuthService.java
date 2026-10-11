@@ -93,20 +93,27 @@ public class AuthService {
     }
 
     public AuthDTO.AuthResponse verifyEmployeeCredentials(AuthDTO.EmployeeCredentialsRequest request) {
-        User user = loadByEmail(request.getEmployeeEmail());
-        Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-        if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
-        membershipService.add(user, company, UserRole.EMPLOYEE);
-        user.setLastCompanyId(company.getId());
-        user.setCompany(company);
-        userRepository.save(user);
-        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
-        return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
-                "You're now connected to " + company.getName() + ". Switch companies anytime.");
+    User user = loadByEmail(request.getEmployeeEmail());
+    Company company = companyRepository.findByEmployeeUsername(request.getManagerUsername())
+            .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+    if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
+        throw new IllegalArgumentException("Invalid credentials");
     }
+    int limit = company.getEmployeeLimit() == null ? 3 : company.getEmployeeLimit();
+    long current = membershipRepository.countByCompanyIdAndRole(company.getId(), UserRole.EMPLOYEE);
+    boolean already = membershipRepository.findByUserId(user.getId()).stream()
+            .anyMatch(m -> company.getId().equals(m.getCompany().getId()) && m.getRole() == UserRole.EMPLOYEE);
+    if (!already && current >= limit) {
+        throw new IllegalArgumentException("This shop is full (" + limit + " employees). Ask the manager to upgrade.");
+    }
+    membershipService.add(user, company, UserRole.EMPLOYEE);
+    user.setLastCompanyId(company.getId());
+    user.setCompany(company);
+    userRepository.save(user);
+    String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+    return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
+            "You're now connected to " + company.getName() + ".");
+}
 
     public AuthDTO.AuthResponse requestPayment(String email, AuthDTO.PaymentRequest request) {
         User user = loadByEmail(email);

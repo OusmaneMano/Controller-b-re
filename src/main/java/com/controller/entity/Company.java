@@ -48,6 +48,9 @@ public class Company {
     @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT false")
     private Boolean demo;
 
+    @Column(columnDefinition = "INTEGER DEFAULT 3")
+    private Integer employeeLimit;
+
     @Column(nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -61,6 +64,7 @@ public class Company {
         if (demo == null) demo = false;
         if (status == null) status = CompanyStatus.ACTIVE;
         if (tableDesign == null || tableDesign.isBlank()) tableDesign = "PROFESSIONAL";
+        if (employeeLimit == null) employeeLimit = 3;
     }
 
     @PreUpdate
