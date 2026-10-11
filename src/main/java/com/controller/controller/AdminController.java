@@ -63,4 +63,10 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> myPayment(Principal principal) {
         return ResponseEntity.ok(adminService.paymentFor(principal.getName()));
     }
+
+    @DeleteMapping("/admin/users/{userId}")
+public ResponseEntity<Void> deleteUser(@PathVariable Long userId) {
+    adminService.deleteUser(userId);
+    return ResponseEntity.noContent().build();
+}
 }

@@ -190,4 +190,11 @@ public AuthDTO.UserInfo decrement(Long userId) {
                 .paymentNote(user.getPaymentNote())
                 .build();
     }
+
+    public void deleteUser(Long userId) {
+    User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    if (user.getRole() == UserRole.ADMIN) throw new IllegalArgumentException("Cannot delete the admin");
+    membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
+    userRepository.delete(user);
+}
 }
