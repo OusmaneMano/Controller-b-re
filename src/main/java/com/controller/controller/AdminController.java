@@ -29,9 +29,14 @@ public class AdminController {
     @PostMapping("/admin/managers/{userId}/approve")
     public ResponseEntity<AuthDTO.UserInfo> approveManager(
             @PathVariable Long userId,
-            @RequestParam(defaultValue = "1") int months,
+            @RequestParam(defaultValue = "2") int months,
             @RequestParam(defaultValue = "3") int employeeLimit) {
         return ResponseEntity.ok(adminService.approveManager(userId, months, employeeLimit));
+    }
+
+    @PostMapping("/admin/managers/{userId}/staff")
+    public ResponseEntity<AuthDTO.UserInfo> setStaff(@PathVariable Long userId, @RequestParam int employeeLimit) {
+        return ResponseEntity.ok(adminService.setStaffLimit(userId, employeeLimit));
     }
 
     @PostMapping("/admin/managers/{userId}/increment")

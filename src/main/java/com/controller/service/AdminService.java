@@ -96,27 +96,38 @@ public class AdminService {
     public AuthDTO.UserInfo approveManager(Long userId, int months, int employeeLimit) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only a manager can be approved");
-        int period = Math.max(1, Math.min(months, 12));
-        int limit = Math.max(3, Math.min(employeeLimit, 200));
-        LocalDate blockOn = LocalDate.now().withDayOfMonth(1).plusMonths(period + 1L).withDayOfMonth(11);
+        int period = Math.max(2, Math.min(months, 12));
+        int limit = Math.max(3, Math.min(employeeLimit, 100));
+        LocalDate blockOn = LocalDate.now().withDayOfMonth(1).plusMonths(period).withDayOfMonth(11);
         user.setUserStatus(UserStatus.ACTIVE);
         user.setIsActive(true);
         user.setPaidUntil(LocalDateTime.of(blockOn, LocalTime.MIDNIGHT));
         userRepository.save(user);
-        for (Membership m : membershipRepository.findByUserId(user.getId())) {
+        applyLimit(user, limit);
+        setStaffActive(user, true);
+        return toInfo(user);
+    }
+
+    public AuthDTO.UserInfo setStaffLimit(Long userId, int employeeLimit) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only a manager has a staff limit");
+        applyLimit(user, Math.max(3, Math.min(employeeLimit, 100)));
+        return toInfo(user);
+    }
+
+    private void applyLimit(User manager, int limit) {
+        for (Membership m : membershipRepository.findByUserId(manager.getId())) {
             if (m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo())) {
                 m.getCompany().setEmployeeLimit(limit);
             }
         }
-        setStaffActive(user, true);
-        return toInfo(user);
     }
 
     public AuthDTO.UserInfo increment(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         LocalDate base = user.getPaidUntil() != null && user.getPaidUntil().toLocalDate().isAfter(LocalDate.now())
                 ? user.getPaidUntil().toLocalDate()
-                : LocalDate.now().withDayOfMonth(1).plusMonths(2).withDayOfMonth(11);
+                : LocalDate.now().withDayOfMonth(1).plusMonths(1).withDayOfMonth(11);
         user.setPaidUntil(LocalDateTime.of(base.plusMonths(1), LocalTime.MIDNIGHT));
         user.setUserStatus(UserStatus.ACTIVE);
         user.setIsActive(true);
