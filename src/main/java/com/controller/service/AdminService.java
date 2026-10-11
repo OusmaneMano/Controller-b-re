@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import java.util.Comparator;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -39,35 +41,36 @@ public class AdminService {
     }
 
     public List<Map<String, Object>> listAccounts() {
-        return userRepository.findAll().stream()
-                .filter(u -> !"demo@controller.local".equalsIgnoreCase(u.getEmail()))
-                .map(u -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("id", u.getId());
-                    row.put("firstName", u.getFirstName());
-                    row.put("lastName", u.getLastName());
-                    row.put("email", u.getEmail());
-                    row.put("role", u.getRole().toString());
-                    row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
-                    row.put("paidUntil", u.getPaidUntil());
-                    row.put("monthsLeft", monthsLeft(u.getPaidUntil()));
-                    boolean expired = u.getRole() == UserRole.MANAGER
-                            && (u.getPaidUntil() == null || !u.getPaidUntil().isAfter(LocalDateTime.now())
-                            || u.getUserStatus() == UserStatus.SUSPENDED);
-                    row.put("expired", expired);
-                    List<Membership> memberships = membershipRepository.findByUserId(u.getId());
-                    row.put("companies", memberships.stream()
-                            .map(m -> m.getCompany().getName() + " · " + m.getRole())
-                            .distinct()
-                            .toList());
-                    int limit = memberships.stream()
-                            .filter(m -> m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo()))
-                            .map(m -> m.getCompany().getEmployeeLimit() == null ? 3 : m.getCompany().getEmployeeLimit())
-                            .findFirst().orElse(0);
-                    row.put("employeeLimit", limit);
-                    row.put("monthlyFee", feeFor(limit));
-                    return row;
-                }).collect(Collectors.toList());
+    return userRepository.findAll().stream()
+            .filter(u -> !"demo@controller.local".equalsIgnoreCase(u.getEmail()))
+            .sorted(Comparator.comparing(User::getId))
+            .map(u -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("id", u.getId());
+                row.put("firstName", u.getFirstName());
+                row.put("lastName", u.getLastName());
+                row.put("email", u.getEmail());
+                row.put("role", u.getRole().toString());
+                row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
+                row.put("paidUntil", u.getPaidUntil());
+                row.put("monthsLeft", monthsLeft(u.getPaidUntil()));
+                boolean expired = u.getRole() == UserRole.MANAGER
+                        && (u.getPaidUntil() == null || !u.getPaidUntil().isAfter(LocalDateTime.now())
+                        || u.getUserStatus() == UserStatus.SUSPENDED);
+                row.put("expired", expired);
+                List<Membership> memberships = membershipRepository.findByUserId(u.getId());
+                row.put("companies", memberships.stream()
+                        .map(m -> m.getCompany().getName() + " · " + m.getRole())
+                        .distinct()
+                        .toList());
+                int limit = memberships.stream()
+                        .filter(m -> m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo()))
+                        .map(m -> m.getCompany().getEmployeeLimit() == null ? 3 : m.getCompany().getEmployeeLimit())
+                        .findFirst().orElse(0);
+                row.put("employeeLimit", limit);
+                row.put("monthlyFee", feeFor(limit));
+                return row;
+            }).collect(Collectors.toList());
     }
 
     public Map<String, Object> paymentFor(String email) {
