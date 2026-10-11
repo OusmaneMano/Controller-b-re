@@ -21,7 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -219,6 +221,24 @@ public class CompanyService {
         return toCompanyResponse(saved, columns, UserRole.MANAGER, "Employee credentials updated");
     }
 
+    public List<Map<String, Object>> listEmployees(String managerEmail, Long companyId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the manager can list staff");
+        }
+        return membershipRepository.findByCompanyIdAndRole(companyId, UserRole.EMPLOYEE).stream()
+                .map(m -> {
+                    User u = m.getUser();
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", u.getId());
+                    row.put("firstName", u.getFirstName());
+                    row.put("lastName", u.getLastName());
+                    row.put("email", u.getEmail());
+                    row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
+                    return row;
+                }).toList();
+    }
+
     public void removeEmployee(String managerEmail, Long companyId, Long employeeUserId) {
         Membership manager = membershipService.require(managerEmail, companyId);
         if (manager.getRole() != UserRole.MANAGER) {
@@ -227,6 +247,24 @@ public class CompanyService {
         membershipRepository.findByUserIdAndCompanyId(employeeUserId, companyId)
                 .filter(m -> m.getRole() == UserRole.EMPLOYEE)
                 .ifPresent(membershipRepository::delete);
+    }
+
+    public void blockEmployee(String managerEmail, Long companyId, Long employeeUserId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only the manager");
+        User emp = userRepository.findById(employeeUserId).orElseThrow();
+        emp.setUserStatus(UserStatus.SUSPENDED);
+        emp.setIsActive(false);
+        userRepository.save(emp);
+    }
+
+    public void unblockEmployee(String managerEmail, Long companyId, Long employeeUserId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only the manager");
+        User emp = userRepository.findById(employeeUserId).orElseThrow();
+        emp.setUserStatus(UserStatus.ACTIVE);
+        emp.setIsActive(true);
+        userRepository.save(emp);
     }
 
     private TableColumn buildSystemColumn(Company company, String fieldName, FieldType fieldType,

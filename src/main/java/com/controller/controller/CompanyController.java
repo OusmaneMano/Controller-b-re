@@ -82,11 +82,37 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.getColumnsForEmployee(principal.getName(), companyId));
     }
 
+    @GetMapping("/manager/company/employees")
+    public ResponseEntity<List<Map<String, Object>>> listEmployees(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId) {
+        return ResponseEntity.ok(companyService.listEmployees(principal.getName(), companyId));
+    }
+
     @DeleteMapping("/manager/company/employees/{userId}")
-    public ResponseEntity<Void> removeEmployee(Principal principal,
-                                               @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
-                                               @PathVariable Long userId) {
+    public ResponseEntity<Void> removeEmployee(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @PathVariable Long userId) {
         companyService.removeEmployee(principal.getName(), companyId, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/manager/company/employees/{userId}/block")
+    public ResponseEntity<Void> blockEmployee(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @PathVariable Long userId) {
+        companyService.blockEmployee(principal.getName(), companyId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/manager/company/employees/{userId}/unblock")
+    public ResponseEntity<Void> unblockEmployee(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @PathVariable Long userId) {
+        companyService.unblockEmployee(principal.getName(), companyId, userId);
+        return ResponseEntity.ok().build();
     }
 }

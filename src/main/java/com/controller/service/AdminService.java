@@ -16,13 +16,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -32,7 +31,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final MembershipRepository membershipRepository;
 
-    public List<AuthDTO.UserInfo> listPendingManagers() {
+    public List<AuthDTO.UserInfo> pendingManagers() {
         EnumSet<UserStatus> waiting = EnumSet.of(UserStatus.PAYMENT_SENT, UserStatus.PENDING_APPROVAL);
         return userRepository.findAll().stream()
                 .filter(u -> u.getRole() == UserRole.MANAGER && waiting.contains(u.getUserStatus()))
@@ -41,36 +40,36 @@ public class AdminService {
     }
 
     public List<Map<String, Object>> listAccounts() {
-    return userRepository.findAll().stream()
-            .filter(u -> !"demo@controller.local".equalsIgnoreCase(u.getEmail()))
-            .sorted(Comparator.comparing(User::getId))
-            .map(u -> {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("id", u.getId());
-                row.put("firstName", u.getFirstName());
-                row.put("lastName", u.getLastName());
-                row.put("email", u.getEmail());
-                row.put("role", u.getRole().toString());
-                row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
-                row.put("paidUntil", u.getPaidUntil());
-                row.put("monthsLeft", monthsLeft(u.getPaidUntil()));
-                boolean expired = u.getRole() == UserRole.MANAGER
-                        && (u.getPaidUntil() == null || !u.getPaidUntil().isAfter(LocalDateTime.now())
-                        || u.getUserStatus() == UserStatus.SUSPENDED);
-                row.put("expired", expired);
-                List<Membership> memberships = membershipRepository.findByUserId(u.getId());
-                row.put("companies", memberships.stream()
-                        .map(m -> m.getCompany().getName() + " · " + m.getRole())
-                        .distinct()
-                        .toList());
-                int limit = memberships.stream()
-                        .filter(m -> m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo()))
-                        .map(m -> m.getCompany().getEmployeeLimit() == null ? 3 : m.getCompany().getEmployeeLimit())
-                        .findFirst().orElse(0);
-                row.put("employeeLimit", limit);
-                row.put("monthlyFee", feeFor(limit));
-                return row;
-            }).collect(Collectors.toList());
+        return userRepository.findAll().stream()
+                .filter(u -> !"demo@controller.local".equalsIgnoreCase(u.getEmail()))
+                .sorted(Comparator.comparing(User::getId))
+                .map(u -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", u.getId());
+                    row.put("firstName", u.getFirstName());
+                    row.put("lastName", u.getLastName());
+                    row.put("email", u.getEmail());
+                    row.put("role", u.getRole().toString());
+                    row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
+                    row.put("paidUntil", u.getPaidUntil());
+                    row.put("monthsLeft", monthsLeft(u.getPaidUntil()));
+                    boolean expired = u.getRole() == UserRole.MANAGER
+                            && (u.getPaidUntil() == null || !u.getPaidUntil().isAfter(LocalDateTime.now())
+                            || u.getUserStatus() == UserStatus.SUSPENDED);
+                    row.put("expired", expired);
+                    List<Membership> memberships = membershipRepository.findByUserId(u.getId());
+                    row.put("companies", memberships.stream()
+                            .map(m -> m.getCompany().getName() + " · " + m.getRole())
+                            .distinct()
+                            .toList());
+                    int limit = memberships.stream()
+                            .filter(m -> m.getRole() == UserRole.MANAGER && !Boolean.TRUE.equals(m.getCompany().getDemo()))
+                            .map(m -> m.getCompany().getEmployeeLimit() == null ? 3 : m.getCompany().getEmployeeLimit())
+                            .findFirst().orElse(0);
+                    row.put("employeeLimit", limit);
+                    row.put("monthlyFee", feeFor(limit));
+                    return row;
+                }).collect(Collectors.toList());
     }
 
     public Map<String, Object> paymentFor(String email) {
@@ -84,12 +83,12 @@ public class AdminService {
     }
 
     private int monthsLeft(LocalDateTime until) {
-    if (until == null || !until.isAfter(LocalDateTime.now())) return 0;
-    LocalDate end = until.toLocalDate();
-    LocalDate now = LocalDate.now();
-    int months = (end.getYear() - now.getYear()) * 12 + (end.getMonthValue() - now.getMonthValue());
-    if (end.getDayOfMonth() < now.getDayOfMonth()) months--;
-    return Math.max(1, months);
+        if (until == null || !until.isAfter(LocalDateTime.now())) return 0;
+        LocalDate end = until.toLocalDate();
+        LocalDate now = LocalDate.now();
+        int months = (end.getYear() - now.getYear()) * 12 + (end.getMonthValue() - now.getMonthValue());
+        if (end.getDayOfMonth() < now.getDayOfMonth()) months--;
+        return Math.max(1, months);
     }
 
     private int feeFor(long employees) {
@@ -100,43 +99,43 @@ public class AdminService {
     }
 
     public AuthDTO.UserInfo approveManager(Long userId, int months, int employeeLimit) {
-    User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-    if (user.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only a manager can be approved");
-    int period = Math.max(1, Math.min(months, 12));
-    int limit = Math.max(3, Math.min(employeeLimit, 100));
-    LocalDate blockOn = LocalDate.now().withDayOfMonth(1).plusMonths(period).withDayOfMonth(11);
-    user.setUserStatus(UserStatus.ACTIVE);
-    user.setIsActive(true);
-    user.setPaidUntil(LocalDateTime.of(blockOn, LocalTime.MIDNIGHT));
-    userRepository.save(user);
-    applyLimit(user, limit);
-    setStaffActive(user, true);
-    return toInfo(user);
-}
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only a manager can be approved");
+        int period = Math.max(1, Math.min(months, 12));
+        int limit = Math.max(3, Math.min(employeeLimit, 100));
+        LocalDate blockOn = LocalDate.now().withDayOfMonth(1).plusMonths(period).withDayOfMonth(11);
+        user.setUserStatus(UserStatus.ACTIVE);
+        user.setIsActive(true);
+        user.setPaidUntil(LocalDateTime.of(blockOn, LocalTime.MIDNIGHT));
+        userRepository.save(user);
+        applyLimit(user, limit);
+        setStaffActive(user, true);
+        return toInfo(user);
+    }
 
-public AuthDTO.UserInfo increment(Long userId) {
-    User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-    LocalDate base = user.getPaidUntil() != null && user.getPaidUntil().toLocalDate().isAfter(LocalDate.now())
-            ? user.getPaidUntil().toLocalDate()
-            : LocalDate.now().withDayOfMonth(1).plusMonths(1).withDayOfMonth(11);
-    user.setPaidUntil(LocalDateTime.of(base.plusMonths(1), LocalTime.MIDNIGHT));
-    user.setUserStatus(UserStatus.ACTIVE);
-    user.setIsActive(true);
-    userRepository.save(user);
-    setStaffActive(user, true);
-    return toInfo(user);
-}
+    public AuthDTO.UserInfo increment(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        LocalDate base = user.getPaidUntil() != null && user.getPaidUntil().toLocalDate().isAfter(LocalDate.now())
+                ? user.getPaidUntil().toLocalDate()
+                : LocalDate.now().withDayOfMonth(1).plusMonths(1).withDayOfMonth(11);
+        user.setPaidUntil(LocalDateTime.of(base.plusMonths(1), LocalTime.MIDNIGHT));
+        user.setUserStatus(UserStatus.ACTIVE);
+        user.setIsActive(true);
+        userRepository.save(user);
+        setStaffActive(user, true);
+        return toInfo(user);
+    }
 
-public AuthDTO.UserInfo decrement(Long userId) {
-    User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-    if (user.getPaidUntil() == null) return toInfo(user);
-    LocalDate next = user.getPaidUntil().toLocalDate().minusMonths(1);
-    LocalDate minOne = LocalDate.now().withDayOfMonth(1).plusMonths(1).withDayOfMonth(11);
-    if (next.isBefore(minOne)) next = minOne;
-    user.setPaidUntil(LocalDateTime.of(next, LocalTime.MIDNIGHT));
-    userRepository.save(user);
-    return toInfo(user);
-}
+    public AuthDTO.UserInfo decrement(Long userId) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getPaidUntil() == null) return toInfo(user);
+        LocalDate next = user.getPaidUntil().toLocalDate().minusMonths(1);
+        LocalDate minOne = LocalDate.now().withDayOfMonth(1).plusMonths(1).withDayOfMonth(11);
+        if (next.isBefore(minOne)) next = minOne;
+        user.setPaidUntil(LocalDateTime.of(next, LocalTime.MIDNIGHT));
+        userRepository.save(user);
+        return toInfo(user);
+    }
 
     public AuthDTO.UserInfo setStaffLimit(Long userId, int employeeLimit) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -198,9 +197,10 @@ public AuthDTO.UserInfo decrement(Long userId) {
     }
 
     public void deleteUser(Long userId) {
-    User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-    if (user.getRole() == UserRole.ADMIN) throw new IllegalArgumentException("Cannot delete the admin");
-    membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
-    userRepository.delete(user);
-}
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getRole() == UserRole.ADMIN) throw new IllegalArgumentException("Cannot delete the admin");
+        membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
+        userRepository.delete(user);
+    }
 }
