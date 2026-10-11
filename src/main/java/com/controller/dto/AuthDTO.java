@@ -190,6 +190,7 @@ public class AuthDTO {
         private String role;
         private String status;
         private String paymentNote;
+        private String paidUntil;
     }
 
     /**

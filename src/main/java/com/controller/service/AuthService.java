@@ -218,16 +218,17 @@ public class AuthService {
     }
 
     private AuthDTO.UserInfo toUserInfo(User user) {
-        return AuthDTO.UserInfo.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .role(user.getRole().toString())
-                .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
-                .paymentNote(user.getPaymentNote())
-                .build();
-    }
+    return AuthDTO.UserInfo.builder()
+            .id(user.getId())
+            .email(user.getEmail())
+            .firstName(user.getFirstName())
+            .lastName(user.getLastName())
+            .role(user.getRole().toString())
+            .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
+            .paymentNote(user.getPaymentNote())
+            .paidUntil(user.getPaidUntil() == null ? null : user.getPaidUntil().toString())
+            .build();
+}
 
     private AuthDTO.AuthResponse buildAuth(String token, User user, Company company, String roleInCompany, String message) {
         AuthDTO.CompanyInfo info = null;

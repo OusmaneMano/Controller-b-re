@@ -21,8 +21,11 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,10 +38,24 @@ public class PdfExportService {
     public byte[] export(String email, Long companyId, Long employeeIdFilter,
                          LocalDateTime from, LocalDateTime to, Map<String, String> rawParams) {
         Membership m = membershipService.require(email, companyId);
+        String q = rawParams.remove("q");
+        String columnsParam = rawParams.remove("columns");
         List<Record> rows = recordService.loadFiltered(m, employeeIdFilter, from, to, rawParams);
+        if (q != null && !q.isBlank()) {
+            String needle = q.toLowerCase();
+            rows = rows.stream().filter(r -> {
+                String by = r.getCreatedBy() == null ? "" : (r.getCreatedBy().getFirstName() + " " + r.getCreatedBy().getLastName()).toLowerCase();
+                if (by.contains(needle)) return true;
+                Map<String, Object> data = r.getData() == null ? Map.of() : r.getData();
+                return data.values().stream().anyMatch(v -> v != null && v.toString().toLowerCase().contains(needle));
+            }).toList();
+        }
         RecordDTO.RecordListResponse summary = recordService.toListResponse(m, rows);
         List<TableColumn> columns = tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(m.getCompany().getId());
-
+        if (columnsParam != null && !columnsParam.isBlank()) {
+            Set<String> keep = Arrays.stream(columnsParam.split(",")).map(String::trim).collect(Collectors.toSet());
+            columns = columns.stream().filter(c -> keep.contains(c.getFieldName())).toList();
+        }
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             Document doc = new Document(PageSize.A4.rotate(), 24, 24, 24, 24);
@@ -47,28 +64,24 @@ public class PdfExportService {
             Font title = new Font(Font.FontFamily.HELVETICA, 16, Font.BOLD);
             Font small = new Font(Font.FontFamily.HELVETICA, 9);
             Font head = new Font(Font.FontFamily.HELVETICA, 9, Font.BOLD);
-
             doc.add(new Paragraph(m.getCompany().getName(), title));
             doc.add(new Paragraph("Records export · " + LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), small));
             if (summary.getTotalAmount() != null) {
-                doc.add(new Paragraph("Total " + (summary.getAmountFieldName() != null ? summary.getAmountFieldName() : "Amount")
-                        + ": " + summary.getTotalAmount() + "   ·   " + summary.getTotalCount() + " rows", small));
+                doc.add(new Paragraph("Total " + (summary.getAmountFieldName() != null ? summary.getAmountFieldName() : "Amount") + ": " + summary.getTotalAmount() + "   ·   " + rows.size() + " rows", small));
             } else {
-                doc.add(new Paragraph(summary.getTotalCount() + " rows", small));
+                doc.add(new Paragraph(rows.size() + " rows", small));
             }
             doc.add(new Paragraph(" ", small));
-
             int cols = Math.max(1, columns.size() + 2);
             PdfPTable table = new PdfPTable(cols);
             table.setWidthPercentage(100);
             addCell(table, "When", head);
             addCell(table, "By", head);
             for (TableColumn c : columns) addCell(table, c.getFieldName(), head);
-
             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
             for (Record r : rows) {
                 addCell(table, r.getCreatedAt() != null ? r.getCreatedAt().format(fmt) : "", small);
-                addCell(table, r.getCreatedBy().getFirstName() + " " + r.getCreatedBy().getLastName(), small);
+                addCell(table, r.getCreatedBy() == null ? "" : r.getCreatedBy().getFirstName() + " " + r.getCreatedBy().getLastName(), small);
                 Map<String, Object> data = r.getData() != null ? r.getData() : Map.of();
                 for (TableColumn c : columns) {
                     Object v = data.get(c.getFieldName());
