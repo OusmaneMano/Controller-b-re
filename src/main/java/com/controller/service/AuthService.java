@@ -6,7 +6,6 @@ import com.controller.entity.User;
 import com.controller.entity.enums.UserRole;
 import com.controller.entity.enums.UserStatus;
 import com.controller.repository.CompanyRepository;
-import com.controller.repository.MembershipRepository;
 import com.controller.repository.UserRepository;
 import com.controller.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +24,6 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final CompanyRepository companyRepository;
-    private final MembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final MembershipService membershipService;
@@ -33,8 +31,7 @@ public class AuthService {
 
     public AuthDTO.AuthResponse managerSignup(AuthDTO.SignupRequest request) {
         validateNewUser(request);
-        boolean owner = request.getEmail() != null && request.getEmail().equalsIgnoreCase("ousmanemanot@gmail.com");
-        User user = persistUser(request, UserRole.MANAGER, owner ? UserStatus.ACTIVE : UserStatus.EXPLORING);
+        User user = persistUser(request, UserRole.MANAGER, UserStatus.EXPLORING);
         Company demo = demoCompanyService.getOrCreateDemoCompany();
         membershipService.add(user, demo, UserRole.EMPLOYEE);
         user.setLastCompanyId(demo.getId());
@@ -42,8 +39,7 @@ public class AuthService {
         userRepository.save(user);
         String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.MANAGER.toString());
         return buildAuth(token, user, demo, UserRole.EMPLOYEE.toString(),
-                owner ? "Owner account is active. You can set up a shop without payment."
-                      : "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
+                "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
     }
 
     public AuthDTO.AuthResponse managerLogin(AuthDTO.LoginRequest request) {
@@ -101,20 +97,13 @@ public class AuthService {
         if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
-        int limit = company.getEmployeeLimit() == null ? 3 : company.getEmployeeLimit();
-        long current = membershipRepository.countByCompanyIdAndRole(company.getId(), UserRole.EMPLOYEE);
-        boolean already = membershipRepository.findByUserId(user.getId()).stream()
-                .anyMatch(m -> company.getId().equals(m.getCompany().getId()) && m.getRole() == UserRole.EMPLOYEE);
-        if (!already && current >= limit) {
-            throw new IllegalArgumentException("This shop is full (" + limit + " employees). Ask the manager to upgrade.");
-        }
         membershipService.add(user, company, UserRole.EMPLOYEE);
         user.setLastCompanyId(company.getId());
         user.setCompany(company);
         userRepository.save(user);
         String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
         return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
-                "You're now connected to " + company.getName() + ".");
+                "You're now connected to " + company.getName() + ". Switch companies anytime.");
     }
 
     public AuthDTO.AuthResponse requestPayment(String email, AuthDTO.PaymentRequest request) {
@@ -147,11 +136,79 @@ public class AuthService {
     }
 
     public AuthDTO.AuthResponse googleLogin(AuthDTO.GoogleLoginRequest request) {
-        throw new UnsupportedOperationException("Google OAuth login not yet implemented");
+        if (request.getIdToken() == null || request.getIdToken().isBlank()) {
+            throw new IllegalArgumentException("Google token is required");
+        }
+        String email = verifyGoogleToken(request.getIdToken());
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Invalid Google account");
+        }
+        email = email.toLowerCase();
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            // Auto-create as exploring manager from verified Google account
+            user = User.builder()
+                    .email(email)
+                    .firstName(lastGoogleGiven != null ? lastGoogleGiven : "Google")
+                    .lastName(lastGoogleFamily != null ? lastGoogleFamily : "User")
+                    .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
+                    .role(UserRole.MANAGER)
+                    .userStatus(UserStatus.EXPLORING)
+                    .termsAccepted(true)
+                    .termsAcceptedAt(LocalDateTime.now())
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            user = userRepository.save(user);
+            Company demo = demoCompanyService.getOrCreateDemoCompany();
+            membershipService.add(user, demo, UserRole.EMPLOYEE);
+            user.setLastCompanyId(demo.getId());
+            user.setCompany(demo);
+            userRepository.save(user);
+        }
+        if (user.getUserStatus() == UserStatus.SUSPENDED) {
+            throw new IllegalArgumentException("Account blocked");
+        }
+        String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
+        Company company = user.getCompany();
+        return buildAuth(token, user, company, user.getRole().toString(), "Signed in with Google");
+    }
+
+    private String verifyGoogleToken(String idToken) {
+        try {
+            java.net.URI uri = java.net.URI.create("https://oauth2.googleapis.com/tokeninfo?id_token=" + java.net.URLEncoder.encode(idToken, "UTF-8"));
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(uri).GET().build();
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient()
+                    .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() != 200) return null;
+            String body = res.body();
+            // Extract email
+            String email = extractJson(body, "email");
+            if (email == null) return null;
+            // Store name temporarily for user creation (simple approach)
+            lastGoogleGiven = extractJson(body, "given_name");
+            lastGoogleFamily = extractJson(body, "family_name");
+            return email;
+        } catch (Exception e) {
+            log.warn("Google token verify failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private String lastGoogleGiven;
+    private String lastGoogleFamily;
+
+    private String extractJson(String body, String key) {
+        String search = "\"" + key + "\"";
+        int i = body.indexOf(search);
+        if (i < 0) return null;
+        int start = body.indexOf('"', i + search.length()) + 1;
+        int end = body.indexOf('"', start);
+        if (start <= 0 || end <= start) return null;
+        return body.substring(start, end);
     }
 
     public AuthDTO.AuthResponse adminLogin(AuthDTO.LoginRequest request) {
-        if ("ousmanemanot@gmail.com".equalsIgnoreCase(request.getEmail()) && "Maman78pere@".equals(request.getPassword())) {
+        if ("admin@controller.com".equals(request.getEmail()) && "admin123".equals(request.getPassword())) {
             String token = jwtTokenProvider.generateToken(request.getEmail(), UserRole.ADMIN.toString());
             return AuthDTO.AuthResponse.builder()
                     .token(token)
@@ -174,7 +231,11 @@ public class AuthService {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new IllegalArgumentException("Email is required");
         }
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = request.getEmail().toLowerCase().trim();
+        if (isDisposable(email)) {
+            throw new IllegalArgumentException("Please use a real email address. Temporary emails are not allowed.");
+        }
+        if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email already registered");
         }
         if (request.getPassword() == null || !request.getPassword().equals(request.getConfirmPassword())) {
@@ -235,7 +296,6 @@ public class AuthService {
                 .role(user.getRole().toString())
                 .status(user.getUserStatus() != null ? user.getUserStatus().toString() : null)
                 .paymentNote(user.getPaymentNote())
-                .paidUntil(user.getPaidUntil() == null ? null : user.getPaidUntil().toString())
                 .build();
     }
 
@@ -257,5 +317,15 @@ public class AuthService {
                 .memberships(membershipService.listFor(user))
                 .message(message)
                 .build();
+    }
+
+    private boolean isDisposable(String email) {
+        String domain = email.substring(email.indexOf('@') + 1);
+        java.util.Set<String> blocked = java.util.Set.of(
+            "tempmail.com", "10minutemail.com", "guerrillamail.com", "mailinator.com",
+            "yopmail.com", "throwaway.email", "temp-mail.org", "getnada.com",
+            "trashmail.com", "fakeinbox.com", "sharklasers.com", "guerrillamailblock.com"
+        );
+        return blocked.contains(domain);
     }
 }
