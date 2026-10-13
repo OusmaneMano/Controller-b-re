@@ -173,25 +173,34 @@ public class AuthService {
         return buildAuth(token, user, company, user.getRole().toString(), "Signed in with Google");
     }
 
-    private String verifyGoogleToken(String idToken) {
+        private String verifyGoogleToken(String token) {
         try {
-            java.net.URI uri = java.net.URI.create("https://oauth2.googleapis.com/tokeninfo?id_token=" + java.net.URLEncoder.encode(idToken, "UTF-8"));
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(uri).GET().build();
-            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient()
-                    .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() != 200) return null;
-            String body = res.body();
-            // Extract email
-            String email = extractJson(body, "email");
-            if (email == null) return null;
-            // Store name temporarily for user creation (simple approach)
-            lastGoogleGiven = extractJson(body, "given_name");
-            lastGoogleFamily = extractJson(body, "family_name");
-            return email;
+            // Try as id_token first
+            String email = fetchEmail("https://oauth2.googleapis.com/tokeninfo?id_token=" + java.net.URLEncoder.encode(token, "UTF-8"), null);
+            if (email != null) return email;
+            // Fallback: treat as access token
+            return fetchEmail("https://www.googleapis.com/oauth2/v3/userinfo", token);
         } catch (Exception e) {
             log.warn("Google token verify failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    private String fetchEmail(String url, String bearer) throws Exception {
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url)).GET();
+        if (bearer != null) b.header("Authorization", "Bearer " + bearer);
+        java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient()
+                .send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() != 200) {
+            log.warn("Google verify status {} for {}", res.statusCode(), url);
+            return null;
+        }
+        String body = res.body();
+        String email = extractJson(body, "email");
+        if (email == null) return null;
+        lastGoogleGiven = extractJson(body, "given_name");
+        lastGoogleFamily = extractJson(body, "family_name");
+        return email;
     }
 
     private String lastGoogleGiven;
