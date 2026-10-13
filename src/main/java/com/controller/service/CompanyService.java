@@ -311,4 +311,13 @@ public class CompanyService {
                 .message(message)
                 .build();
     }
+
+    public CompanyDTO.CompanyResponse renameCompany(String email, Long companyId, String newName) {
+        Membership m = membershipService.require(email, companyId);
+        if (m.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only the manager");
+        Company company = m.getCompany();
+        company.setName(newName.trim());
+        companyRepository.save(company);
+        return toCompanyResponse(company, tableColumnRepository.findByCompanyIdOrderByOrderIndexAsc(company.getId()), UserRole.MANAGER, null);
+    }
 }

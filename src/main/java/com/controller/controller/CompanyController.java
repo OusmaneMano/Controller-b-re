@@ -115,4 +115,12 @@ public class CompanyController {
         companyService.unblockEmployee(principal.getName(), companyId, userId);
         return ResponseEntity.ok().build();
     }
+
+    @PutMapping("/manager/company/name")
+    public ResponseEntity<CompanyDTO.CompanyResponse> rename(
+        Principal principal,
+        @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+        @RequestBody Map<String, String> body) {
+    return ResponseEntity.ok(companyService.renameCompany(principal.getName(), companyId, body.get("name")));
+}
 }
