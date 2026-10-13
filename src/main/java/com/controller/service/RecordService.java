@@ -144,6 +144,7 @@ public class RecordService {
      * f.Product=rice          text contains
      * fmin.Amount=100         number >=
      * fmax.Amount=500         number <=
+     * f.Entered by=name       creator name contains
      */
     private boolean matchesColumnFilters(Record record, List<TableColumn> columns, Map<String, String> rawParams) {
         if (rawParams == null || rawParams.isEmpty()) return true;
@@ -174,6 +175,16 @@ public class RecordService {
                 Double want = toDouble(max);
                 if (dv == null || want == null || dv > want) return false;
             }
+        }
+        String enteredBy = first(rawParams, "f.Entered by", "f_Entered by");
+        if (enteredBy != null && !enteredBy.isBlank()) {
+            String name = "";
+            if (record.getCreatedBy() != null) {
+                name = (record.getCreatedBy().getFirstName() != null ? record.getCreatedBy().getFirstName() : "")
+                        + " "
+                        + (record.getCreatedBy().getLastName() != null ? record.getCreatedBy().getLastName() : "");
+            }
+            if (!name.toLowerCase(Locale.ROOT).contains(enteredBy.toLowerCase(Locale.ROOT))) return false;
         }
         return true;
     }
