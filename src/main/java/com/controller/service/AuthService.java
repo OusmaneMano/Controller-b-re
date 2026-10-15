@@ -66,11 +66,9 @@ public class AuthService {
     public AuthDTO.AuthResponse employeeSignup(AuthDTO.SignupRequest request) {
         validateNewUser(request);
         User user = persistUser(request, UserRole.EMPLOYEE, UserStatus.ACTIVE);
-        return AuthDTO.AuthResponse.builder()
-                .user(toUserInfo(user))
-                .memberships(membershipService.listFor(user))
-                .message("Employee account created. Log in, then join a company with the shared username and PIN.")
-                .build();
+        String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.EMPLOYEE.toString());
+        return buildAuth(token, user, null, UserRole.EMPLOYEE.toString(),
+                "Account created. Enter your company username and PIN.");
     }
 
     public AuthDTO.AuthResponse employeeLogin(AuthDTO.LoginRequest request) {
