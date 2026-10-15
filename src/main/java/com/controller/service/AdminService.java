@@ -200,7 +200,14 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getRole() == UserRole.ADMIN) throw new IllegalArgumentException("Cannot delete the admin");
-        membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
-        userRepository.delete(user);
+        try {
+            membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
+            userRepository.delete(user);
+        } catch (Exception e) {
+            // Soft delete if hard delete fails (foreign keys)
+            user.setUserStatus(UserStatus.DELETED);
+            user.setIsActive(false);
+            userRepository.save(user);
+        }
     }
 }
