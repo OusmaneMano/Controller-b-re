@@ -42,6 +42,7 @@ public class AdminService {
     public List<Map<String, Object>> listAccounts() {
         return userRepository.findAll().stream()
                 .filter(u -> !"demo@controller.local".equalsIgnoreCase(u.getEmail()))
+                .filter(u -> u.getUserStatus() != UserStatus.DELETED)
                 .sorted(Comparator.comparing(User::getId))
                 .map(u -> {
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -200,14 +201,11 @@ public class AdminService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (user.getRole() == UserRole.ADMIN) throw new IllegalArgumentException("Cannot delete the admin");
-        try {
-            membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
-            userRepository.delete(user);
-        } catch (Exception e) {
-            // Soft delete if hard delete fails (foreign keys)
-            user.setUserStatus(UserStatus.DELETED);
-            user.setIsActive(false);
-            userRepository.save(user);
-        }
+        // Soft delete only — avoids foreign key errors
+        user.setUserStatus(UserStatus.DELETED);
+        user.setIsActive(false);
+        user.setEmail(user.getEmail() + ".deleted." + user.getId());
+        userRepository.save(user);
+        membershipRepository.deleteAll(membershipRepository.findByUserId(user.getId()));
     }
 }
