@@ -39,7 +39,7 @@ public class AuthService {
         userRepository.save(user);
         String token = jwtTokenProvider.generateToken(user.getEmail(), UserRole.MANAGER.toString());
         return buildAuth(token, user, demo, UserRole.EMPLOYEE.toString(),
-                "Account created. Explore the demo shop — when you want your own table, mark payment sent.");
+                "Account created. Explore the demo — when you want your own table, mark payment sent.");
     }
 
     public AuthDTO.AuthResponse managerLogin(AuthDTO.LoginRequest request) {
@@ -95,13 +95,11 @@ public class AuthService {
         if (!company.getEmployeePassword().equals(request.getManagerPassword())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
-        membershipService.add(user, company, UserRole.EMPLOYEE);
-        user.setLastCompanyId(company.getId());
-        user.setCompany(company);
-        userRepository.save(user);
+        // Create pending membership — manager must approve
+        membershipService.add(user, company, UserRole.EMPLOYEE, false);
         String token = jwtTokenProvider.generateToken(user.getEmail(), user.getRole().toString());
-        return buildAuth(token, user, company, UserRole.EMPLOYEE.toString(),
-                "You're now connected to " + company.getName() + ". Switch companies anytime.");
+        return buildAuth(token, user, null, UserRole.EMPLOYEE.toString(),
+                "Request sent. Waiting for manager approval.");
     }
 
     public AuthDTO.AuthResponse requestPayment(String email, AuthDTO.PaymentRequest request) {
@@ -144,24 +142,27 @@ public class AuthService {
         email = email.toLowerCase();
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
-            // Auto-create as exploring manager from verified Google account
+            UserRole role = "EMPLOYEE".equalsIgnoreCase(request.getRole()) ? UserRole.EMPLOYEE : UserRole.MANAGER;
+            UserStatus status = role == UserRole.EMPLOYEE ? UserStatus.ACTIVE : UserStatus.EXPLORING;
             user = User.builder()
                     .email(email)
                     .firstName(lastGoogleGiven != null ? lastGoogleGiven : "Google")
                     .lastName(lastGoogleFamily != null ? lastGoogleFamily : "User")
                     .password(passwordEncoder.encode(java.util.UUID.randomUUID().toString()))
-                    .role(UserRole.MANAGER)
-                    .userStatus(UserStatus.EXPLORING)
+                    .role(role)
+                    .userStatus(status)
                     .termsAccepted(true)
                     .termsAcceptedAt(LocalDateTime.now())
                     .createdAt(LocalDateTime.now())
                     .build();
             user = userRepository.save(user);
-            Company demo = demoCompanyService.getOrCreateDemoCompany();
-            membershipService.add(user, demo, UserRole.EMPLOYEE);
-            user.setLastCompanyId(demo.getId());
-            user.setCompany(demo);
-            userRepository.save(user);
+            if (role == UserRole.MANAGER) {
+                Company demo = demoCompanyService.getOrCreateDemoCompany();
+                membershipService.add(user, demo, UserRole.EMPLOYEE);
+                user.setLastCompanyId(demo.getId());
+                user.setCompany(demo);
+                userRepository.save(user);
+            }
         }
         if (user.getUserStatus() == UserStatus.SUSPENDED) {
             throw new IllegalArgumentException("Account blocked");

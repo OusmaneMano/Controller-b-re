@@ -36,6 +36,9 @@ public class Membership {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(nullable = false, columnDefinition = "BOOLEAN DEFAULT true")
+    private Boolean approved = true;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

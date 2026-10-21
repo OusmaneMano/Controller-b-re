@@ -26,20 +26,29 @@ public class MembershipService {
     private final CompanyRepository companyRepository;
 
     public Membership add(User user, Company company, UserRole role) {
+        return add(user, company, role, true);
+    }
+
+    public Membership add(User user, Company company, UserRole role, boolean approved) {
         return membershipRepository.findByUserIdAndCompanyId(user.getId(), company.getId())
                 .map(existing -> {
-                    // Keep manager role if they already own it; otherwise keep existing.
+                    if (!existing.getApproved() && approved) {
+                        existing.setApproved(true);
+                        return membershipRepository.save(existing);
+                    }
                     return existing;
                 })
                 .orElseGet(() -> membershipRepository.save(Membership.builder()
                         .user(user)
                         .company(company)
                         .role(role)
+                        .approved(approved)
                         .build()));
     }
 
     public List<AuthDTO.MembershipInfo> listFor(User user) {
         return membershipRepository.findByUserId(user.getId()).stream()
+                .filter(m -> Boolean.TRUE.equals(m.getApproved()))
                 .map(this::toInfo)
                 .collect(Collectors.toList());
     }

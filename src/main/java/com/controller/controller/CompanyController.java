@@ -89,6 +89,22 @@ public class CompanyController {
         return ResponseEntity.ok(companyService.listEmployees(principal.getName(), companyId));
     }
 
+    @GetMapping("/manager/company/employees/pending")
+    public ResponseEntity<List<Map<String, Object>>> listPendingEmployees(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId) {
+        return ResponseEntity.ok(companyService.listPendingEmployees(principal.getName(), companyId));
+    }
+
+    @PostMapping("/manager/company/employees/{userId}/approve")
+    public ResponseEntity<Void> approveEmployee(
+            Principal principal,
+            @RequestHeader(value = "X-Company-Id", required = false) Long companyId,
+            @PathVariable Long userId) {
+        companyService.approveEmployee(principal.getName(), companyId, userId);
+        return ResponseEntity.ok().build();
+    }
+
     @DeleteMapping("/manager/company/employees/{userId}")
     public ResponseEntity<Void> removeEmployee(
             Principal principal,

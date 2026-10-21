@@ -227,6 +227,7 @@ public class CompanyService {
             throw new IllegalArgumentException("Only the manager can list staff");
         }
         return membershipRepository.findByCompanyIdAndRole(companyId, UserRole.EMPLOYEE).stream()
+                .filter(m -> Boolean.TRUE.equals(m.getApproved()))
                 .map(m -> {
                     User u = m.getUser();
                     Map<String, Object> row = new LinkedHashMap<>();
@@ -237,6 +238,34 @@ public class CompanyService {
                     row.put("status", u.getUserStatus() == null ? null : u.getUserStatus().toString());
                     return row;
                 }).toList();
+    }
+
+    public List<Map<String, Object>> listPendingEmployees(String managerEmail, Long companyId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) {
+            throw new IllegalArgumentException("Only the manager can list staff");
+        }
+        return membershipRepository.findByCompanyIdAndRole(companyId, UserRole.EMPLOYEE).stream()
+                .filter(m -> Boolean.FALSE.equals(m.getApproved()))
+                .map(m -> {
+                    User u = m.getUser();
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", u.getId());
+                    row.put("firstName", u.getFirstName());
+                    row.put("lastName", u.getLastName());
+                    row.put("email", u.getEmail());
+                    return row;
+                }).toList();
+    }
+
+    public void approveEmployee(String managerEmail, Long companyId, Long employeeUserId) {
+        Membership manager = membershipService.require(managerEmail, companyId);
+        if (manager.getRole() != UserRole.MANAGER) throw new IllegalArgumentException("Only the manager");
+        membershipRepository.findByUserIdAndCompanyId(employeeUserId, companyId)
+                .ifPresent(m -> {
+                    m.setApproved(true);
+                    membershipRepository.save(m);
+                });
     }
 
     public void removeEmployee(String managerEmail, Long companyId, Long employeeUserId) {

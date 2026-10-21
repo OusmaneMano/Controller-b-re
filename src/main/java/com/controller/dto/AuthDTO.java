@@ -91,6 +91,7 @@ public class AuthDTO {
     @AllArgsConstructor
     public static class GoogleLoginRequest {
         private String idToken;
+        private String role; // "MANAGER" or "EMPLOYEE"
     }
 
     /**
@@ -221,4 +222,3 @@ public class AuthDTO {
         private String status;
     }
 }
-
